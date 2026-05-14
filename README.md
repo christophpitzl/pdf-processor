@@ -4,17 +4,6 @@
 
 A Docker-based tool that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using AI, and renames them based on the analyzed content.
 
-## Quickstart
-
-```bash
-docker run --rm -it \
-  -e WEBDAV_URL=https://your-nas/webdav \
-  -e WEBDAV_USERNAME=user \
-  -e WEBDAV_PASSWORD=pass \
-  -e OPENROUTER_API_KEY=sk-... \
-  ghcr.io/christophpitzl/pdf-processor:latest
-```
-
 ## Overview
 
 This project solves the problem of disorganized PDF files that are uploaded from mobile scanning apps. Instead of keeping filenames based on scan timestamps, this processor:
@@ -46,10 +35,13 @@ This project solves the problem of disorganized PDF files that are uploaded from
 Pull and run the latest image:
 
 ```bash
-docker pull ghcr.io/christophpitzl/pdf-processor:latest
+docker run --rm -it \
+  -e WEBDAV_URL=https://your-nas/webdav \
+  -e WEBDAV_USERNAME=user \
+  -e WEBDAV_PASSWORD=pass \
+  -e OPENROUTER_API_KEY=sk-... \
+  ghcr.io/christophpitzl/pdf-processor:latest
 ```
-
-See the [Quickstart](#quickstart) section above for a full run command.
 
 ### Using Docker Compose
 
@@ -77,6 +69,18 @@ docker build -f .devcontainer/Dockerfile -t pdf-processor .
 docker run --rm -it --env-file .env pdf-processor
 ```
 
+### View Logs
+
+```bash
+docker compose logs -f
+```
+
+### Stop the Container
+
+```bash
+docker compose down
+```
+
 ## Configuration
 
 ### Environment Variables
@@ -99,7 +103,37 @@ OPENROUTER_MODEL=openai/gpt-4o-mini
 
 # Processing Configuration
 SCAN_DATE_FORMAT=%Y-%m-%d
+MIN_CONFIDENCE=0.6
+FILENAME_PATTERN={date}_{type}_{summary}.pdf
+CHECK_INTERVAL=60
+
+# Logging
+LOG_LEVEL=INFO
 ```
+
+### Configuration Options
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WEBDAV_URL` | http://nas.local/webdav | URL of your WebDAV server |
+| `WEBDAV_USERNAME` | - | WebDAV username |
+| `WEBDAV_PASSWORD` | - | WebDAV password |
+| `WEBDAV_WATCH_FOLDER` | /incoming | Folder to monitor for new PDFs |
+| `WEBDAV_OUTPUT_FOLDER` | /processed | Folder to save processed files |
+| `OPENROUTER_API_KEY` | - | Your OpenRouter API key |
+| `OPENROUTER_MODEL` | openai/gpt-4o-mini | AI model to use for analysis |
+| `SCAN_DATE_FORMAT` | %Y-%m-%d | Date format for generated filenames |
+| `MIN_CONFIDENCE` | 0.6 | Minimum confidence score for processing |
+| `FILENAME_PATTERN` | {date}_{type}_{summary}.pdf | Pattern for new filenames |
+| `CHECK_INTERVAL` | 60 | Seconds between file checks |
+| `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
+
+### Filename Pattern Placeholders
+
+- `{date}` - Document date or current date
+- `{type}` - Document type (invoice, receipt, contract, etc.)
+- `{summary}` - Brief summary of document content
+
 
 ## Development
 
@@ -157,76 +191,6 @@ Docker images are tagged with:
 | `<sha>` | Short commit hash |
 
 See the [tags page](https://github.com/christophpitzl/pdf-processor/pkgs/container/pdf-processor) for all available tags.
-MIN_CONFIDENCE=0.6
-FILENAME_PATTERN={date}_{type}_{summary}.pdf
-CHECK_INTERVAL=60
-
-# Logging
-LOG_LEVEL=INFO
-```
-
-### Configuration Options
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `WEBDAV_URL` | http://nas.local/webdav | URL of your WebDAV server |
-| `WEBDAV_USERNAME` | - | WebDAV username |
-| `WEBDAV_PASSWORD` | - | WebDAV password |
-| `WEBDAV_WATCH_FOLDER` | /incoming | Folder to monitor for new PDFs |
-| `WEBDAV_OUTPUT_FOLDER` | /processed | Folder to save processed files |
-| `OPENROUTER_API_KEY` | - | Your OpenRouter API key |
-| `OPENROUTER_MODEL` | openai/gpt-4o-mini | AI model to use for analysis |
-| `SCAN_DATE_FORMAT` | %Y-%m-%d | Date format for generated filenames |
-| `MIN_CONFIDENCE` | 0.6 | Minimum confidence score for processing |
-| `FILENAME_PATTERN` | {date}_{type}_{summary}.pdf | Pattern for new filenames |
-| `CHECK_INTERVAL` | 60 | Seconds between file checks |
-| `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-
-### Filename Pattern Placeholders
-
-- `{date}` - Document date or current date
-- `{type}` - Document type (invoice, receipt, contract, etc.)
-- `{summary}` - Brief summary of document content
-
-## Usage
-
-### Quick Start
-
-1. Clone or copy this repository to your NAS or server
-
-2. Create a `.env` file with your configuration:
-
-```bash
-cp .env.example .env
-# Edit .env with your settings
-```
-
-3. Build and start the container:
-
-```bash
-docker-compose build
-docker-compose up -d
-```
-
-4. Upload PDF files to your WebDAV `/incoming` folder
-
-5. Check the `/processed` folder for renamed files
-
-### View Logs
-
-```bash
-# View container logs
-docker-compose logs -f
-
-# Or check the log file directly
-tail -f logs/pdf-processor.log
-```
-
-### Stop the Container
-
-```bash
-docker-compose down
-```
 
 ## AI Model Selection
 
