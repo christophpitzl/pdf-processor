@@ -11,17 +11,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
  && rm -rf /var/lib/apt/lists/*
 
-# Set up a non-root user matching the default devcontainer user
-ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=1000
+# The base image already has a 'vscode' user; ensure it has sudo access
+RUN apt-get update && apt-get install -y sudo \
+ && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
+ && chmod 0440 /etc/sudoers.d/vscode
 
-RUN groupadd --gid $USER_GID $USERNAME \
- && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
- && apt-get update && apt-get install -y sudo \
- && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/$USERNAME \
- && chmod 0440 /etc/sudoers.d/$USERNAME
-
-USER $USERNAME
+USER vscode
 
 WORKDIR /workspace
