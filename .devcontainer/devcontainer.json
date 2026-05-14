@@ -1,0 +1,17 @@
+{
+  "name": "PDF Processor Dev Container",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "extensions": [
+    "ms-python.python",
+    "eamodio.gitlens"
+  ],
+  "postCreateCommand": "python3 --version && pip3 --version || true",
+  "remoteUser": "vscode"
+}
