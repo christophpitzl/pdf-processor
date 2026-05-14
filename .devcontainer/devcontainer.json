@@ -12,6 +12,6 @@
     "ms-python.python",
     "eamodio.gitlens"
   ],
-  "postCreateCommand": "python3 --version && pip3 --version || true",
+  "postCreateCommand": "git lfs install && python3 --version && pip3 --version || true",
   "remoteUser": "vscode"
 }
