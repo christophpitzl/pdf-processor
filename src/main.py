@@ -1,0 +1,345 @@
+"""
+PDF Processor - Main Application
+Monitors WebDAV folder, processes PDF files with AI, and renames them based on content.
+"""
+
+import os
+import re
+import time
+import hashlib
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any
+from loguru import logger
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# WebDAV client
+from webdav3.client import Client
+from webdav3.exceptions import WebDavException
+
+# PDF processing
+from PyPDF2 import PdfReader
+import pdfplumber
+
+# OpenRouter API
+from openai import OpenAI
+
+
+class PDFProcessor:
+    """Main class for processing PDF files from WebDAV."""
+    
+    def __init__(self):
+        """Initialize the PDF processor with configuration."""
+        self.webdav_url = os.getenv('WEBDAV_URL', 'http://nas.local/webdav')
+        self.webdav_username = os.getenv('WEBDAV_USERNAME')
+        self.webdav_password = os.getenv('WEBDAV_PASSWORD')
+        self.watch_folder = os.getenv('WEBDAV_WATCH_FOLDER', '/incoming')
+        self.output_folder = os.getenv('WEBDAV_OUTPUT_FOLDER', '/processed')
+        self.openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+        self.openrouter_model = os.getenv('OPENROUTER_MODEL', 'openai/gpt-4o-mini')
+        self.scan_date_format = os.getenv('SCAN_DATE_FORMAT', '%Y-%m-%d')
+        self.min_confidence = float(os.getenv('MIN_CONFIDENCE', '0.6'))
+        self.filename_pattern = os.getenv('FILENAME_PATTERN', '{date}_{type}_{summary}.pdf')
+        self.check_interval = int(os.getenv('CHECK_INTERVAL', '60'))
+        self.log_level = os.getenv('LOG_LEVEL', 'INFO')
+        
+        # Setup logging
+        logger.remove()
+        logger.add(
+            os.getenv('LOGS_DIR', './logs') + '/pdf-processor.log',
+            level=self.log_level,
+            rotation="10 MB",
+            retention="30 days"
+        )
+        logger.add(lambda msg: print(msg, end=''), level=self.log_level)
+        
+        # Initialize WebDAV client
+        self.webdav_client = self._init_webdav_client()
+        
+        # Initialize OpenRouter client
+        self.openai_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=self.openrouter_api_key,
+            default_headers={
+                "HTTP-Referer": "https://github.com/christophpitzl/homelab",
+                "X-Title": "PDF Processor",
+            }
+        )
+        
+        # Track processed files to avoid duplicates
+        self.processed_files: Dict[str, str] = {}
+        
+        logger.info("PDF Processor initialized successfully")
+    
+    def _init_webdav_client(self) -> Optional[Client]:
+        """Initialize and return WebDAV client."""
+        if not self.webdav_username or not self.webdav_password:
+            logger.error("WebDAV credentials not provided")
+            return None
+        
+        options = {
+            'webdav_hostname': self.webdav_url,
+            'webdav_login': self.webdav_username,
+            'webdav_password': self.webdav_password,
+            'webdav_timeout': 60,
+        }
+        
+        try:
+            client = Client(options)
+            client.verify = False  # Disable SSL verification for self-signed certs
+            logger.info("WebDAV client initialized")
+            return client
+        except Exception as e:
+            logger.error(f"Failed to initialize WebDAV client: {e}")
+            return None
+    
+    def extract_text_from_pdf(self, pdf_path: str) -> str:
+        """Extract text from PDF file using multiple methods."""
+        text = ""
+        
+        try:
+            # Method 1: Use pdfplumber for better text extraction
+            with pdfplumber.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+            
+            # If text extraction failed, try PyPDF2
+            if not text.strip():
+                reader = PdfReader(pdf_path)
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
+            
+            logger.debug(f"Extracted {len(text)} characters from PDF")
+            return text.strip()
+            
+        except Exception as e:
+            logger.error(f"Error extracting text from PDF: {e}")
+            return ""
+    
+    def analyze_document_with_ai(self, text: str) -> Dict[str, Any]:
+        """Analyze document content using OpenRouter AI."""
+        if not text:
+            logger.warning("No text to analyze")
+            return {}
+        
+        # Create prompt for document analysis
+        prompt = f"""Analyze the following document text and extract key information.
+        
+Return a JSON object with the following structure:
+{{
+    "document_type": "invoice|receipt|contract|letter|report|other",
+    "date": "YYYY-MM-DD format if found, otherwise null",
+    "summary": "brief 2-4 word summary of the document content",
+    "confidence": 0.0-1.0 confidence score",
+    "entities": ["list of important entities like company names, person names, etc."]
+}}
+
+Document text:
+{text[:4000]}  # Limit text length for API
+
+Only return valid JSON, no additional text."""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=self.openrouter_model,
+                messages=[
+                    {"role": "system", "content": "You are a document analysis assistant. Always return valid JSON."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.3,
+                max_tokens=500
+            )
+            
+            # Extract JSON from response
+            content = response.choices[0].message.content.strip()
+            
+            # Try to parse JSON
+            import json
+            try:
+                # Try to find JSON in the response
+                json_start = content.find('{')
+                json_end = content.rfind('}') + 1
+                if json_start != -1 and json_end > json_start:
+                    content = content[json_start:json_end]
+                result = json.loads(content)
+                return result
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse AI response as JSON: {e}")
+                logger.debug(f"Response content: {content}")
+                return {}
+                
+        except Exception as e:
+            logger.error(f"Error analyzing document with AI: {e}")
+            return {}
+    
+    def generate_filename(self, analysis: Dict[str, Any], original_filename: str) -> str:
+        """Generate new filename based on analysis and pattern."""
+        if not analysis:
+            return original_filename
+        
+        # Extract date from analysis or use current date
+        date_str = ""
+        if analysis.get('date'):
+            try:
+                date_obj = datetime.fromisoformat(analysis['date'].replace('Z', '+00:00'))
+                date_str = date_obj.strftime(self.scan_date_format)
+            except:
+                date_str = datetime.now().strftime(self.scan_date_format)
+        else:
+            date_str = datetime.now().strftime(self.scan_date_format)
+        
+        # Extract document type
+        doc_type = analysis.get('document_type', 'document')
+        if doc_type == 'other':
+            doc_type = 'file'
+        
+        # Generate summary (slugified)
+        summary = analysis.get('summary', 'document')
+        summary = re.sub(r'[^\w\s-]', '', summary)[:50]  # Limit length
+        summary = re.sub(r'[-\s]+', '_', summary).strip('_').lower()
+        
+        # Extract entities for additional context
+        entities = analysis.get('entities', [])
+        if entities:
+            entity_str = entities[0].replace(' ', '_').lower()[:20]
+            summary = f"{summary}_{entity_str}" if len(summary) < 30 else summary
+        
+        # Replace pattern placeholders
+        filename = self.filename_pattern
+        filename = filename.replace('{date}', date_str)
+        filename = filename.replace('{type}', doc_type)
+        filename = filename.replace('{summary}', summary)
+        
+        # Ensure .pdf extension
+        if not filename.lower().endswith('.pdf'):
+            filename += '.pdf'
+        
+        # Clean up filename
+        filename = re.sub(r'[^\w\s.-]', '', filename)
+        filename = re.sub(r'[-\s]+', '_', filename)
+        
+        return filename
+    
+    def process_pdf(self, file_path: str, original_filename: str) -> bool:
+        """Process a single PDF file."""
+        logger.info(f"Processing file: {original_filename}")
+        
+        try:
+            # Download file to local temp directory
+            local_path = os.path.join('/app/data', original_filename)
+            self.webdav_client.download_sync(remote_path=file_path, local_path=local_path)
+            
+            # Extract text from PDF
+            text = self.extract_text_from_pdf(local_path)
+            
+            if not text:
+                logger.warning(f"No text extracted from {original_filename}, skipping")
+                return False
+            
+            # Analyze with AI
+            analysis = self.analyze_document_with_ai(text)
+            
+            if not analysis:
+                logger.warning(f"AI analysis failed for {original_filename}")
+                return False
+            
+            # Check confidence
+            if analysis.get('confidence', 0) < self.min_confidence:
+                logger.warning(f"Low confidence ({analysis.get('confidence')}) for {original_filename}")
+            
+            # Generate new filename
+            new_filename = self.generate_filename(analysis, original_filename)
+            
+            logger.info(f"Original: {original_filename} -> New: {new_filename}")
+            
+            # Upload to output folder
+            output_path = os.path.join(self.output_folder, new_filename)
+            self.webdav_client.upload_sync(
+                remote_path=output_path,
+                local_path=local_path
+            )
+            
+            # Optionally delete from source folder
+            # self.webdav_client.delete(file_path)
+            
+            # Remove local file
+            if os.path.exists(local_path):
+                os.remove(local_path)
+            
+            logger.success(f"Successfully processed {original_filename}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing {original_filename}: {e}")
+            return False
+    
+    def check_for_new_files(self):
+        """Check WebDAV folder for new files to process."""
+        if not self.webdav_client:
+            logger.error("WebDAV client not initialized")
+            return
+        
+        try:
+            # List files in watch folder
+            files = self.webdav_client.list(self.watch_folder)
+            
+            for file_info in files:
+                if file_info['resource_type'] == 'file' and file_info['filename'].endswith('.pdf'):
+                    filename = file_info['filename']
+                    file_path = os.path.join(self.watch_folder, filename)
+                    
+                    # Check if already processed (using file hash)
+                    file_hash = self._get_file_hash(file_path)
+                    
+                    if file_hash and file_hash not in self.processed_files:
+                        self.processed_files[file_hash] = filename
+                        self.process_pdf(file_path, filename)
+                    elif file_hash:
+                        logger.debug(f"File already processed: {filename}")
+                        
+        except WebDavException as e:
+            logger.error(f"WebDAV error checking for files: {e}")
+        except Exception as e:
+            logger.error(f"Error checking for new files: {e}")
+    
+    def _get_file_hash(self, file_path: str) -> Optional[str]:
+        """Get MD5 hash of a file."""
+        try:
+            # Download file to calculate hash
+            local_path = os.path.join('/app/data', 'temp_hash.pdf')
+            self.webdav_client.download_sync(remote_path=file_path, local_path=local_path)
+            
+            with open(local_path, 'rb') as f:
+                file_hash = hashlib.md5(f.read()).hexdigest()
+            
+            os.remove(local_path)
+            return file_hash
+            
+        except Exception as e:
+            logger.error(f"Error calculating file hash: {e}")
+            return None
+    
+    def run(self):
+        """Main loop to continuously monitor for new files."""
+        logger.info(f"Starting PDF processor, checking every {self.check_interval} seconds")
+        
+        while True:
+            self.check_for_new_files()
+            time.sleep(self.check_interval)
+
+
+def main():
+    """Main entry point."""
+    processor = PDFProcessor()
+    processor.run()
+
+
+if __name__ == "__main__":
+    main()
