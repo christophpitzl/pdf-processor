@@ -1,6 +1,19 @@
 # PDF Processor
 
-A Docker container that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using AI, and renames them based on the analyzed content.
+[![GHCR](https://github.com/christophpitzl/pdf-processor/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/christophpitzl/pdf-processor/actions/workflows/docker-publish.yml)
+
+A Docker-based tool that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using AI, and renames them based on the analyzed content.
+
+## Quickstart
+
+```bash
+docker run --rm -it \
+  -e WEBDAV_URL=https://your-nas/webdav \
+  -e WEBDAV_USERNAME=user \
+  -e WEBDAV_PASSWORD=pass \
+  -e OPENROUTER_API_KEY=sk-... \
+  ghcr.io/christophpitzl/pdf-processor:latest
+```
 
 ## Overview
 
@@ -22,15 +35,53 @@ This project solves the problem of disorganized PDF files that are uploaded from
 
 ## Prerequisites
 
-- Docker and Docker Compose installed
+- Docker installed
 - Access to a WebDAV server (e.g., Nextcloud, Synology NAS, etc.)
 - OpenRouter API key ([get one here](https://openrouter.ai/))
+
+## Usage
+
+### Using the GHCR image (recommended)
+
+Pull and run the latest image:
+
+```bash
+docker pull ghcr.io/christophpitzl/pdf-processor:latest
+```
+
+See the [Quickstart](#quickstart) section above for a full run command.
+
+### Using Docker Compose
+
+Create a `docker-compose.yml`:
+
+```yaml
+services:
+  pdf-processor:
+    image: ghcr.io/christophpitzl/pdf-processor:latest
+    container_name: pdf-processor
+    restart: unless-stopped
+    env_file: .env
+```
+
+Then create a `.env` file (see [Configuration](#configuration)) and run:
+
+```bash
+docker compose up -d
+```
+
+### Building locally
+
+```bash
+docker build -f .devcontainer/Dockerfile -t pdf-processor .
+docker run --rm -it --env-file .env pdf-processor
+```
 
 ## Configuration
 
 ### Environment Variables
 
-Create a `.env` file in the project directory based on `.env.example`:
+Create a `.env` file in the project directory:
 
 ```bash
 # WebDAV Configuration
@@ -48,6 +99,64 @@ OPENROUTER_MODEL=openai/gpt-4o-mini
 
 # Processing Configuration
 SCAN_DATE_FORMAT=%Y-%m-%d
+```
+
+## Development
+
+This project includes a dev container configuration for VS Code / GitHub Codespaces.
+
+### Dev Container
+
+The dev container is based on `mcr.microsoft.com/devcontainers/base:ubuntu` with:
+
+- Python 3, pip, venv
+- Git LFS
+- Common build tools
+
+To open in a dev container:
+
+1. Open the repository in VS Code
+2. Run **Dev Containers: Reopen in Container**
+3. Or open directly in [GitHub Codespaces](https://github.com/christophpitzl/pdf-processor)
+
+### Project Structure
+
+```
+.
+├── .devcontainer/          # Dev container config
+│   ├── Dockerfile
+│   └── devcontainer.json
+├── .github/workflows/      # CI/CD
+│   └── docker-publish.yml  # Builds & pushes image to GHCR
+├── src/                    # Application source
+├── tests/                  # Test suite
+├── data/                   # Sample PDFs (tracked with Git LFS)
+├── AGENTS.md               # Copilot agent instructions
+└── README.md
+```
+
+### Commands
+
+```bash
+pip install -e ".[dev]"    # Install with dev dependencies
+ruff check src/ tests/      # Lint
+black src/ tests/           # Format
+mypy src/                   # Type check
+pytest --cov=src/           # Test with coverage
+python -m src.cli --help    # Run the CLI
+```
+
+## Versioning
+
+Docker images are tagged with:
+
+| Tag | Description |
+|---|---|
+| `latest` | Latest commit on `main` |
+| `v0.1.0`, `0.1` | Semantic version tags |
+| `<sha>` | Short commit hash |
+
+See the [tags page](https://github.com/christophpitzl/pdf-processor/pkgs/container/pdf-processor) for all available tags.
 MIN_CONFIDENCE=0.6
 FILENAME_PATTERN={date}_{type}_{summary}.pdf
 CHECK_INTERVAL=60
