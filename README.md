@@ -130,7 +130,8 @@ SCAN_DATE_FORMAT=%Y-%m-%d
 MIN_CONFIDENCE=0.6
 FILENAME_PATTERN={date}_{type}_{summary}.pdf
 CHECK_INTERVAL=60
-
+# Web Interface
+WEB_PORT=8080
 # Logging
 LOG_LEVEL=INFO
 ```
@@ -157,6 +158,56 @@ LOG_LEVEL=INFO
 - `{date}` - Document date or current date
 - `{type}` - Document type (invoice, receipt, contract, etc.)
 - `{summary}` - Brief summary of document content
+
+## Web Interface
+
+The PDF Processor includes a modern web interface for monitoring and controlling the processing.
+
+### Features
+
+- **Dashboard**: View real-time status of input folder, processing state, and output folder
+- **Manual Processing**: Start processing with a button click - runs until input folder is empty
+- **Configurable Check Interval**: Set `CHECK_INTERVAL` to control automatic monitoring
+  - `CHECK_INTERVAL=0` - Disables automatic checking, web interface only
+  - `CHECK_INTERVAL=60` - Check every 60 seconds (default)
+
+### Accessing the Web Interface
+
+When running with Docker Compose, the web interface is available at:
+
+```
+http://localhost:8080
+```
+
+Or configure the port using the `WEB_PORT` environment variable:
+
+```bash
+WEB_PORT=9090 docker compose up -d
+```
+
+### Web Interface Dashboard
+
+The dashboard shows:
+
+1. **Input Folder Count** - Number of PDF documents waiting to be processed
+2. **Processing Status** - Current state (Idle/Running)
+3. **Output Folder Count** - Number of successfully processed PDF documents
+4. **Manual Trigger Button** - Starts processing all documents in the input folder until empty
+5. **Configuration Display** - Shows current check interval setting
+
+### Running with Web Interface
+
+The web interface is enabled by default in Docker. To run in CLI mode only (no web interface):
+
+```bash
+docker run --rm -it --env-file .env pdf-processor python -m src.main
+```
+
+To explicitly run with web interface:
+
+```bash
+docker run --rm -it --env-file .env -p 8080:8080 pdf-processor python -m src.main --web
+```
 
 
 ## Development

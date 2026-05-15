@@ -337,8 +337,26 @@ Only return valid JSON, no additional text."""
             logger.error(f"Error calculating file hash: {e}")
             return None
     
-    def run(self):
-        """Main loop to continuously monitor for new files."""
+    def run(self, web_mode=False):
+        """Main loop to continuously monitor for new files.
+        
+        Args:
+            web_mode: If True, only run once and return (for web interface control).
+                     If False, run continuously with check_interval.
+                     If check_interval is 0, monitoring is disabled.
+        """
+        if web_mode:
+            logger.info("Running in web mode - single check")
+            self.check_for_new_files()
+            return
+        
+        if self.check_interval == 0:
+            logger.info("Check interval is 0 - automatic monitoring disabled")
+            logger.info("Use the web interface to manually trigger processing")
+            # Keep the process alive but don't process automatically
+            while True:
+                time.sleep(3600)  # Sleep for an hour, just to keep process alive
+        
         logger.info(f"Starting PDF processor, checking every {self.check_interval} seconds")
         
         while True:
@@ -348,8 +366,25 @@ Only return valid JSON, no additional text."""
 
 def main():
     """Main entry point."""
-    processor = PDFProcessor()
-    processor.run()
+    import sys
+    
+    # Check if web mode is requested
+    if '--web' in sys.argv:
+        # Run with web interface
+        from src.webapp import WebApp
+        processor = PDFProcessor()
+        
+        # If check_interval is 0, run in web mode only
+        if processor.check_interval == 0:
+            logger.info("Check interval is 0 - running in web-only mode")
+        
+        webapp = WebApp(processor)
+        logger.info("Starting web interface on http://0.0.0.0:8080")
+        webapp.run(host='0.0.0.0', port=8080)
+    else:
+        # Run in CLI mode
+        processor = PDFProcessor()
+        processor.run()
 
 
 if __name__ == "__main__":

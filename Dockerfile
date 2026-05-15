@@ -26,5 +26,9 @@ RUN mkdir -p /app/data /app/logs
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# Expose web interface port
+EXPOSE 8080
+
 # Run the application
-CMD ["python", "-m", "src.main"]
+# Use --web flag to start with web interface
+CMD ["python", "-m", "src.main", "--web"]

@@ -19,3 +19,5 @@ services:
     volumes:
       - ${DATA_DIR:-./data}:/app/data
       - ${LOGS_DIR:-./logs}:/app/logs
+    ports:
+      - "${WEB_PORT:-8080}:8080"
