@@ -1,12 +1,13 @@
 """
 PDF Processor - Main Application
-Monitors WebDAV folder, processes PDF files with AI, and renames them based on content.
+Monitors WebDAV folder, processes PDF files with local AI (Ollama), and renames them based on content.
 """
 
 import os
 import re
 import time
 import hashlib
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -24,8 +25,8 @@ from webdav3.exceptions import WebDavException
 from PyPDF2 import PdfReader
 import pdfplumber
 
-# OpenRouter API
-from openai import OpenAI
+# HTTP client for Ollama API
+import httpx
 
 
 class PDFProcessor:
@@ -38,8 +39,8 @@ class PDFProcessor:
         self.webdav_password = os.getenv('WEBDAV_PASSWORD')
         self.watch_folder = os.getenv('WEBDAV_WATCH_FOLDER', '/incoming')
         self.output_folder = os.getenv('WEBDAV_OUTPUT_FOLDER', '/processed')
-        self.openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
-        self.openrouter_model = os.getenv('OPENROUTER_MODEL', 'openai/gpt-4o-mini')
+        self.ollama_base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+        self.ollama_model = os.getenv('OLLAMA_MODEL', 'llama3.2')
         self.scan_date_format = os.getenv('SCAN_DATE_FORMAT', '%Y-%m-%d')
         self.min_confidence = float(os.getenv('MIN_CONFIDENCE', '0.6'))
         self.filename_pattern = os.getenv('FILENAME_PATTERN', '{date}_{type}_{summary}.pdf')
@@ -59,20 +60,19 @@ class PDFProcessor:
         # Initialize WebDAV client
         self.webdav_client = self._init_webdav_client()
         
-        # Initialize OpenRouter client
-        self.openai_client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=self.openrouter_api_key,
-            default_headers={
-                "HTTP-Referer": "https://github.com/christophpitzl/homelab",
-                "X-Title": "PDF Processor",
-            }
+        # Initialize Ollama HTTP client
+        self.ollama_client = httpx.Client(
+            base_url=self.ollama_base_url,
+            timeout=httpx.Timeout(120.0, connect=10.0),
         )
         
         # Track processed files to avoid duplicates
         self.processed_files: Dict[str, str] = {}
         
-        logger.info("PDF Processor initialized successfully")
+        logger.info(
+            f"PDF Processor initialized successfully "
+            f"(Ollama: {self.ollama_base_url}, model: {self.ollama_model})"
+        )
     
     def _init_webdav_client(self) -> Optional[Client]:
         """Initialize and return WebDAV client."""
@@ -124,7 +124,7 @@ class PDFProcessor:
             return ""
     
     def analyze_document_with_ai(self, text: str) -> Dict[str, Any]:
-        """Analyze document content using OpenRouter AI."""
+        """Analyze document content using a local Ollama model."""
         if not text:
             logger.warning("No text to analyze")
             return {}
@@ -147,21 +147,26 @@ Document text:
 Only return valid JSON, no additional text."""
 
         try:
-            response = self.openai_client.chat.completions.create(
-                model=self.openrouter_model,
-                messages=[
-                    {"role": "system", "content": "You are a document analysis assistant. Always return valid JSON."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=500
+            response = self.ollama_client.post(
+                "/api/chat",
+                json={
+                    "model": self.ollama_model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a document analysis assistant. Always return valid JSON.",
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "stream": False,
+                    "options": {"temperature": 0.3, "num_predict": 500},
+                },
             )
+            response.raise_for_status()
             
-            # Extract JSON from response
-            content = response.choices[0].message.content.strip()
+            content = response.json()["message"]["content"].strip()
             
-            # Try to parse JSON
-            import json
+            # Try to parse JSON from the response
             try:
                 # Try to find JSON in the response
                 json_start = content.find('{')
@@ -171,12 +176,18 @@ Only return valid JSON, no additional text."""
                 result = json.loads(content)
                 return result
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse AI response as JSON: {e}")
+                logger.error(f"Failed to parse Ollama response as JSON: {e}")
                 logger.debug(f"Response content: {content}")
                 return {}
                 
-        except Exception as e:
-            logger.error(f"Error analyzing document with AI: {e}")
+        except httpx.RequestError as e:
+            logger.error(
+                f"Error calling Ollama API at {self.ollama_base_url}: {e}. "
+                f"Make sure Ollama is running and the model '{self.ollama_model}' is pulled."
+            )
+            return {}
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            logger.error(f"Error parsing Ollama response: {e}")
             return {}
     
     def generate_filename(self, analysis: Dict[str, Any], original_filename: str) -> str:
