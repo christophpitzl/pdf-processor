@@ -29,12 +29,38 @@ All processing happens entirely on your local infrastructure — no sensitive do
 
 - Docker and Docker Compose installed
 - Access to a WebDAV server (e.g., Nextcloud, Synology NAS, etc.)
-- [Ollama](https://ollama.com/) — pulled automatically as a Docker service
+- [Ollama](https://ollama.com/) installed and running separately on your host or another machine
 - A local LLM model pulled in Ollama (e.g., `llama3.2`, `mistral`, `gemma2`)
 
 ## Usage
 
-### Using Docker Compose (recommended)
+### Step 1: Install and Run Ollama Separately
+
+First, install Ollama on your host machine or another server:
+
+```bash
+# On Linux/macOS
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama (runs as a service)
+ollama serve
+```
+
+Then pull your desired model:
+
+```bash
+# Pull the default model
+ollama pull llama3.2
+
+# Or pick another model (mistral, gemma2, etc.)
+ollama pull mistral
+```
+
+Ollama will be available at `http://localhost:11434` by default.
+
+### Step 2: Run PDF Processor
+
+#### Using Docker Compose (recommended)
 
 Create a `.env` file (see [Configuration](#configuration)) and run:
 
@@ -42,17 +68,9 @@ Create a `.env` file (see [Configuration](#configuration)) and run:
 docker compose up -d
 ```
 
-This starts both the Ollama service and the PDF processor. On first run, you'll need to pull a model into Ollama:
+The PDF processor will connect to your external Ollama instance via `http://host.docker.internal:11434` (or update `OLLAMA_BASE_URL` in your `.env` file).
 
-```bash
-# Pull the default model
-docker compose exec ollama ollama pull llama3.2
-
-# Or pick another model (mistral, gemma2, etc.)
-docker compose exec ollama ollama pull mistral
-```
-
-### Using the GHCR image
+#### Using the GHCR image
 
 ```bash
 docker run --rm -it \
@@ -63,7 +81,7 @@ docker run --rm -it \
   ghcr.io/christophpitzl/pdf-processor:latest
 ```
 
-### Building locally
+#### Building locally
 
 ```bash
 docker build -t pdf-processor .

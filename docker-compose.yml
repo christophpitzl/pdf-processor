@@ -1,26 +1,15 @@
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    volumes:
-      - ollama_data:/root/.ollama
-    networks:
-      - pdf-processor-network
-
   pdf-processor:
     build: .
     container_name: pdf-processor
     restart: unless-stopped
-    depends_on:
-      - ollama
     environment:
       - WEBDAV_URL=${WEBDAV_URL:-http://nas.local/webdav}
       - WEBDAV_USERNAME=${WEBDAV_USERNAME}
       - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
       - WEBDAV_WATCH_FOLDER=${WEBDAV_WATCH_FOLDER:-/incoming}
       - WEBDAV_OUTPUT_FOLDER=${WEBDAV_OUTPUT_FOLDER:-/processed}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
       - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
@@ -30,12 +19,5 @@ services:
     volumes:
       - ${DATA_DIR:-./data}:/app/data
       - ${LOGS_DIR:-./logs}:/app/logs
-    networks:
-      - pdf-processor-network
-
-networks:
-  pdf-processor-network:
-    driver: bridge
-
-volumes:
-  ollama_data:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
