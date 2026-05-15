@@ -56,19 +56,24 @@ ollama pull llama3.2
 ollama pull mistral
 ```
 
-Ollama will be available at `http://localhost:11434` by default.
+Ollama will be available at `http://<your-ollama-server>:11434`. Note the IP address or hostname of this server.
 
 ### Step 2: Run PDF Processor
 
 #### Using Docker Compose (recommended)
 
-Create a `.env` file (see [Configuration](#configuration)) and run:
+Create a `.env` file (see [Configuration](#configuration)) and update `OLLAMA_BASE_URL` to point to your Ollama server:
+
+```bash
+# Example: Ollama runs on 192.168.1.100
+OLLAMA_BASE_URL=http://192.168.1.100:11434
+```
+
+Then run:
 
 ```bash
 docker compose up -d
 ```
-
-The PDF processor will connect to your external Ollama instance via `http://host.docker.internal:11434` (or update `OLLAMA_BASE_URL` in your `.env` file).
 
 #### Using the GHCR image
 
@@ -77,7 +82,7 @@ docker run --rm -it \
   -e WEBDAV_URL=https://your-nas/webdav \
   -e WEBDAV_USERNAME=user \
   -e WEBDAV_PASSWORD=pass \
-  -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+  -e OLLAMA_BASE_URL=http://<your-ollama-server>:11434 \
   ghcr.io/christophpitzl/pdf-processor:latest
 ```
 
@@ -116,8 +121,8 @@ WEBDAV_PASSWORD=your_password
 WEBDAV_WATCH_FOLDER=/incoming
 WEBDAV_OUTPUT_FOLDER=/processed
 
-# Ollama Configuration
-OLLAMA_BASE_URL=http://ollama:11434
+# Ollama Configuration (use IP/hostname of your Ollama server)
+OLLAMA_BASE_URL=http://192.168.1.100:11434
 OLLAMA_MODEL=llama3.2
 
 # Processing Configuration
@@ -139,7 +144,7 @@ LOG_LEVEL=INFO
 | `WEBDAV_PASSWORD` | - | WebDAV password |
 | `WEBDAV_WATCH_FOLDER` | /incoming | Folder to monitor for new PDFs |
 | `WEBDAV_OUTPUT_FOLDER` | /processed | Folder to save processed files |
-| `OLLAMA_BASE_URL` | http://localhost:11434 | Ollama API base URL |
+| `OLLAMA_BASE_URL` | http://localhost:11434 | Ollama API base URL (use your Ollama server's IP/hostname) |
 | `OLLAMA_MODEL` | llama3.2 | Local model to use for analysis |
 | `SCAN_DATE_FORMAT` | %Y-%m-%d | Date format for generated filenames |
 | `MIN_CONFIDENCE` | 0.6 | Minimum confidence score for processing |
