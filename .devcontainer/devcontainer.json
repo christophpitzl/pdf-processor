@@ -9,8 +9,7 @@
     "terminal.integrated.shell.linux": "/bin/bash"
   },
   "extensions": [
-    "ms-python.python",
-    "eamodio.gitlens"
+    "ms-python.python"
   ],
   "postCreateCommand": "git lfs install && python3 --version && pip3 --version || true",
   "remoteUser": "vscode"
