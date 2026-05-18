@@ -1,12 +1,11 @@
-FROM --platform=$BUILDPLATFORM python:3.11-slim
+FROM --platform=$BUILDPLATFORM python:3.11-alpine
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
     poppler-utils \
     tesseract-ocr \
-    libtesseract-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apk/*
 
 # Set working directory
 WORKDIR /app
@@ -31,7 +30,5 @@ EXPOSE 8080
 # Run the application
 # Use --web flag to start with web interface
 CMD ["python", "-m", "src.main", "--web"]
-
-# Run the application
 # Use --web flag to start with web interface
 CMD ["python", "-m", "src.main", "--web"]
