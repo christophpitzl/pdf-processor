@@ -49,6 +49,15 @@ jobs:
             type=ref,event=branch
             # PR number for PR builds
             type=ref,event=pr
+          labels: |
+            org.opencontainers.image.title=PDF Processor
+            org.opencontainers.image.description=Intelligent PDF document processor with local LLM analysis via Ollama
+            org.opencontainers.image.authors=christophpitzl
+            org.opencontainers.image.vendor=christophpitzl
+            org.opencontainers.image.documentation=https://github.com/christophpitzl/pdf-processor/blob/main/README.md
+            org.opencontainers.image.source=https://github.com/christophpitzl/pdf-processor
+            maintainer=christophpitzl
+            com.github.repo=christophpitzl/pdf-processor
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -62,7 +71,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: .devcontainer/Dockerfile
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
