@@ -60,9 +60,9 @@ Ollama will be available at `http://<your-ollama-server>:11434`. Note the IP add
 
 ### Step 2: Run PDF Processor
 
-#### Using Docker Compose (recommended)
+#### Option 1: Using pre-built image (recommended for users)
 
-Copy the reference env file and edit only what differs from the defaults:
+Use the compose file that pulls the pre-built image from GitHub Container Registry:
 
 ```bash
 cp .env.example .env
@@ -82,7 +82,29 @@ Stop the container:
 docker compose down
 ```
 
-#### Using the GHCR image
+#### Option 2: Building locally (for developers)
+
+To build the image from source instead of using the pre-built image:
+
+```bash
+cp .env.example .env
+# Edit .env as needed
+
+# Edit docker-compose.yml and replace the 'image:' line with 'build: .'
+docker compose up -d
+```
+
+View logs:
+```bash
+docker compose logs -f
+```
+
+Stop the container:
+```bash
+docker compose down
+```
+
+#### Using the GHCR image directly
 
 ```bash
 docker run --rm -it \
@@ -91,13 +113,6 @@ docker run --rm -it \
   -e WEBDAV_PASSWORD=pass \
   -e OLLAMA_BASE_URL=http://<your-ollama-server>:11434 \
   ghcr.io/christophpitzl/pdf-processor:latest
-```
-
-#### Building locally
-
-```bash
-docker build -t pdf-processor .
-docker run --rm -it --env-file .env pdf-processor
 ```
 
 ### Wake-on-LAN (WOL) — Wake Up Ollama Server Automatically

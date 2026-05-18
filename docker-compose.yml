@@ -1,6 +1,23 @@
+# Compose file for pulling pre-built image from GitHub Container Registry
+# This file pulls the pre-built image - no local build required
+#
+# Before using:
+#   1. Replace 'your-username' with the actual GitHub username or organization
+#      (e.g., ghcr.io/christophpitzl/pdf-processor:latest)
+#   2. Copy .env.example to .env and configure your settings
+#   3. Run: docker compose up -d
+#
+# The image will be pulled automatically from ghcr.io
+# Available tags: latest, main, v1.0.0, etc.
+#
+# To build locally instead, replace 'image:' with 'build: .'
+
 services:
   pdf-processor:
-    build: .
+    image: ghcr.io/your-username/pdf-processor:latest
+    # Alternative tags available:
+    # - ghcr.io/your-username/pdf-processor:v1.0.0  # specific version
+    # - ghcr.io/your-username/pdf-processor:main     # latest main branch
     container_name: pdf-processor
     restart: unless-stopped
     environment:
@@ -18,7 +35,7 @@ services:
        - LOG_LEVEL=${LOG_LEVEL:-INFO}
        - OLLAMA_WOL_ENABLED=${OLLAMA_WOL_ENABLED:-false}
        - OLLAMA_MAC_ADDRESS=${OLLAMA_MAC_ADDRESS}
-       - OLLAMA_BROADCAST_HOST=${OLLAMA_BROADCAST_HOST:-255.255.255.255}
+       - OLLAMA_BROADCAST_HOST=${OLLAMA_BROADCAST_HOST:-[IP_ADDRESS]}
        - OLLAMA_WOL_PORT=${OLLAMA_WOL_PORT:-9}
        - OLLAMA_WOL_RETRIES=${OLLAMA_WOL_RETRIES:-10}
        - OLLAMA_WOL_RETRY_DELAY=${OLLAMA_WOL_RETRY_DELAY:-5.0}
