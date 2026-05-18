@@ -91,6 +91,12 @@ class PDFProcessor:
         # Track processed files to avoid duplicates
         self.processed_files: Dict[str, str] = {}
 
+        # Validate local directories
+        self._validate_local_directories()
+
+        # Validate WebDAV connection and folders
+        self._validate_webdav_folders()
+
         # Wake up Ollama server via WOL if enabled
         if self.ollama_wol_enabled and self.ollama_mac_address:
             logger.info("WOL enabled, waking up Ollama server...")
@@ -138,6 +144,89 @@ class PDFProcessor:
         except Exception as e:
             logger.error(f"Failed to initialize WebDAV client: {e}")
             return None
+
+    def _validate_local_directories(self) -> None:
+        """Validate and create local directories if needed."""
+        data_path = Path(self.data_dir)
+        logs_path = Path(self.logs_dir)
+
+        # Check and create data directory
+        try:
+            if not data_path.exists():
+                logger.warning(f"Data directory does not exist: {data_path}")
+                data_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created data directory: {data_path}")
+            elif not data_path.is_dir():
+                logger.error(f"Data path exists but is not a directory: {data_path}")
+            elif not os.access(str(data_path), os.R_OK | os.W_OK):
+                logger.error(f"Data directory is not readable/writable: {data_path}")
+            else:
+                logger.debug(f"Data directory validated: {data_path}")
+        except PermissionError:
+            logger.error(f"Permission denied accessing data directory: {data_path}")
+        except Exception as e:
+            logger.error(f"Error validating data directory {data_path}: {e}")
+
+        # Check and create logs directory
+        try:
+            if not logs_path.exists():
+                logger.warning(f"Logs directory does not exist: {logs_path}")
+                logs_path.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created logs directory: {logs_path}")
+            elif not logs_path.is_dir():
+                logger.error(f"Logs path exists but is not a directory: {logs_path}")
+            elif not os.access(str(logs_path), os.R_OK | os.W_OK):
+                logger.error(f"Logs directory is not readable/writable: {logs_path}")
+            else:
+                logger.debug(f"Logs directory validated: {logs_path}")
+        except PermissionError:
+            logger.error(f"Permission denied accessing logs directory: {logs_path}")
+        except Exception as e:
+            logger.error(f"Error validating logs directory {logs_path}: {e}")
+
+    def _validate_webdav_folders(self) -> None:
+        """Validate WebDAV connection and check if folders exist and are accessible."""
+        if not self.webdav_client:
+            logger.error("Cannot validate WebDAV folders: client not initialized")
+            return
+
+        # Check watch folder
+        try:
+            logger.info(f"Checking WebDAV watch folder: {self.watch_folder}")
+            if self.webdav_client.check(self.watch_folder):
+                # Try to list contents to verify readability
+                files = self.webdav_client.list(self.watch_folder)
+                logger.info(f"Watch folder accessible: {self.watch_folder} ({len(files)} items)")
+            else:
+                logger.warning(f"Watch folder does not exist on WebDAV: {self.watch_folder}")
+                # Attempt to create it
+                try:
+                    self.webdav_client.mkdir(self.watch_folder)
+                    logger.info(f"Created watch folder on WebDAV: {self.watch_folder}")
+                except Exception as e:
+                    logger.error(f"Failed to create watch folder {self.watch_folder}: {e}")
+        except WebDavException as e:
+            logger.error(f"WebDAV error accessing watch folder {self.watch_folder}: {e}")
+        except Exception as e:
+            logger.error(f"Error validating watch folder {self.watch_folder}: {e}")
+
+        # Check output folder
+        try:
+            logger.info(f"Checking WebDAV output folder: {self.output_folder}")
+            if self.webdav_client.check(self.output_folder):
+                files = self.webdav_client.list(self.output_folder)
+                logger.info(f"Output folder accessible: {self.output_folder} ({len(files)} items)")
+            else:
+                logger.warning(f"Output folder does not exist on WebDAV: {self.output_folder}")
+                try:
+                    self.webdav_client.mkdir(self.output_folder)
+                    logger.info(f"Created output folder on WebDAV: {self.output_folder}")
+                except Exception as e:
+                    logger.error(f"Failed to create output folder {self.output_folder}: {e}")
+        except WebDavException as e:
+            logger.error(f"WebDAV error accessing output folder {self.output_folder}: {e}")
+        except Exception as e:
+            logger.error(f"Error validating output folder {self.output_folder}: {e}")
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """Extract text from PDF file using multiple methods."""
