@@ -58,41 +58,59 @@ ollama pull mistral
 
 Ollama will be available at `http://<your-ollama-server>:11434`. Note the IP address or hostname of this server.
 
-### Step 2: Run PDF Processor
+### Step 2: Configure Environment
+
+Copy the example environment file and configure your settings:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set at minimum:
+- `WEBDAV_USERNAME` - Your WebDAV username
+- `WEBDAV_PASSWORD` - Your WebDAV password  
+- `OLLAMA_BASE_URL` - URL of your Ollama server (e.g., `http://192.168.1.100:11434`)
+
+All other variables have built-in defaults and can be left as-is.
+
+### Step 3: Start the Container
 
 #### Option 1: Using pre-built image (recommended for users)
 
-Use the compose file that pulls the pre-built image from GitHub Container Registry:
+Download the [`docker-compose.yml`](docker-compose.yml) file to your desired directory:
 
 ```bash
-cp .env.example .env
-# Edit .env — at minimum set WEBDAV_USERNAME, WEBDAV_PASSWORD, and OLLAMA_BASE_URL
-# All other variables will use their built-in defaults automatically.
+# Create a directory for the project
+mkdir pdf-processor && cd pdf-processor
 
+# Download the compose file
+curl -O https://raw.githubusercontent.com/christophpitzl/pdf-processor/main/docker-compose.yml
+```
+
+Then start the container:
+
+```bash
 docker compose up -d
 ```
 
-View logs:
-```bash
-docker compose logs -f
-```
-
-Stop the container:
-```bash
-docker compose down
-```
+This will automatically pull the latest image from `ghcr.io/christophpitzl/pdf-processor:latest`.
 
 #### Option 2: Building locally (for developers)
 
-To build the image from source instead of using the pre-built image:
+Clone the repository and build from source:
 
 ```bash
-cp .env.example .env
-# Edit .env as needed
+git clone https://github.com/christophpitzl/pdf-processor.git
+cd pdf-processor
+```
 
-# Edit docker-compose.yml and replace the 'image:' line with 'build: .'
+Then edit [`docker-compose.yml`](docker-compose.yml), replace the `image:` line with `build: .`, and run:
+
+```bash
 docker compose up -d
 ```
+
+### Managing the Container
 
 View logs:
 ```bash
