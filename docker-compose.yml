@@ -4,20 +4,29 @@ services:
     container_name: pdf-processor
     restart: unless-stopped
     environment:
-      - WEBDAV_URL=${WEBDAV_URL:-http://nas.local/webdav}
-      - WEBDAV_USERNAME=${WEBDAV_USERNAME}
-      - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
-      - WEBDAV_WATCH_FOLDER=${WEBDAV_WATCH_FOLDER:-/incoming}
-      - WEBDAV_OUTPUT_FOLDER=${WEBDAV_OUTPUT_FOLDER:-/processed}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
-      - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
-      - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
-      - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}
-      - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+       - WEBDAV_URL=${WEBDAV_URL:-http://nas.local/webdav}
+       - WEBDAV_USERNAME=${WEBDAV_USERNAME}
+       - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
+       - WEBDAV_WATCH_FOLDER=${WEBDAV_WATCH_FOLDER:-/incoming}
+       - WEBDAV_OUTPUT_FOLDER=${WEBDAV_OUTPUT_FOLDER:-/processed}
+       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
+       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+       - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
+       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
+       - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}
+       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
+       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+       - OLLAMA_WOL_ENABLED=${OLLAMA_WOL_ENABLED:-false}
+       - OLLAMA_MAC_ADDRESS=${OLLAMA_MAC_ADDRESS}
+       - OLLAMA_BROADCAST_HOST=${OLLAMA_BROADCAST_HOST:-255.255.255.255}
+       - OLLAMA_WOL_PORT=${OLLAMA_WOL_PORT:-9}
+       - OLLAMA_WOL_RETRIES=${OLLAMA_WOL_RETRIES:-10}
+       - OLLAMA_WOL_RETRY_DELAY=${OLLAMA_WOL_RETRY_DELAY:-5.0}
+       - WEB_HOST=${WEB_HOST:-[IP_ADDRESS]}
+       - DATA_DIR=${DATA_DIR:-./data}
+       - LOGS_DIR=${LOGS_DIR:-./logs}
     volumes:
-      - ${DATA_DIR:-./data}:/app/data
-      - ${LOGS_DIR:-./logs}:/app/logs
+       - ${DATA_DIR:-./data}:/app/data
+       - ${LOGS_DIR:-./logs}:/app/logs
     ports:
-      - "${WEB_PORT:-8080}:8080"
+       - "${WEB_PORT:-8080}:8080"

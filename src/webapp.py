@@ -123,8 +123,16 @@ class WebApp:
         
         return status
     
-    def run(self, host='0.0.0.0', port=8080, debug=False):
-        """Run the Flask app."""
+    def run(self, host=None, port=None, debug=False):
+        """Run the Flask app.
+
+        Args:
+            host: Host to bind to.  Falls back to ``settings.web_host``.
+            port: Port to bind to.  Falls back to ``settings.web_port``.
+            debug: Enable Flask debug mode.
+        """
+        host = host or self.processor.settings.web_host
+        port = port or self.processor.settings.web_port
         self.app.run(host=host, port=port, debug=debug, threaded=True)
 
 

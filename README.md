@@ -62,11 +62,12 @@ Ollama will be available at `http://<your-ollama-server>:11434`. Note the IP add
 
 #### Using Docker Compose (recommended)
 
-Create a `.env` file (see [Configuration](#configuration)) and update `OLLAMA_BASE_URL` to point to your Ollama server:
+Copy the reference env file and edit only what differs from the defaults:
 
 ```bash
-# Example: Ollama runs on 192.168.1.100
-OLLAMA_BASE_URL=http://192.168.1.100:11434
+cp .env.example .env
+# Edit .env — at minimum set WEBDAV_USERNAME, WEBDAV_PASSWORD, and OLLAMA_BASE_URL
+# All other variables will use their built-in defaults automatically.
 ```
 
 Then run:
@@ -93,6 +94,31 @@ docker build -t pdf-processor .
 docker run --rm -it --env-file .env pdf-processor
 ```
 
+### Wake-on-LAN (WOL) — Wake Up Ollama Server Automatically
+
+If your Ollama server is not always running, you can enable Wake-on-LAN to
+automatically wake it up before processing begins. This is useful when the
+server sleeps or is powered off.
+
+```bash
+# Enable WOL (set to true)
+OLLAMA_WOL_ENABLED=true
+
+# MAC address of the Ollama server's network interface
+OLLAMA_MAC_ADDRESS=AA:BB:CC:DD:EE:FF
+```
+
+The remaining WOL parameters (`OLLAMA_BROADCAST_HOST`, `OLLAMA_WOL_PORT`,
+`OLLAMA_WOL_RETRIES`, `OLLAMA_WOL_RETRY_DELAY`) already have sensible defaults
+— you typically don't need to touch them.
+
+When WOL is enabled, the processor will:
+1. Send a magic packet to wake up the Ollama server
+2. Wait for the Ollama API to become available (with retries)
+3. Proceed with PDF processing once the server is ready
+
+> **Note**: WOL requires that your Ollama server's network interface supports Wake-on-LAN and is configured to accept magic packets. The server must be on the same subnet or have a router that forwards WOL packets.
+
 ### View Logs
 
 ```bash
@@ -107,51 +133,52 @@ docker compose down
 
 ## Configuration
 
-### Environment Variables
+All configuration parameters have **sensible built-in defaults** defined in
+`src/config.py`. You only need to override the values you want to customize
+— via a `.env` file or environment variables.
 
-Create a `.env` file in the project directory:
+### Quick Start
+
+Copy the reference file and edit only what you need:
 
 ```bash
-# WebDAV Configuration
-WEBDAV_URL=http://nas.local/webdav
-WEBDAV_USERNAME=your_username
-WEBDAV_PASSWORD=your_password
-
-# Folder paths (relative to WebDAV root)
-WEBDAV_WATCH_FOLDER=/incoming
-WEBDAV_OUTPUT_FOLDER=/processed
-
-# Ollama Configuration (use IP/hostname of your Ollama server)
-OLLAMA_BASE_URL=http://192.168.1.100:11434
-OLLAMA_MODEL=llama3.2
-
-# Processing Configuration
-SCAN_DATE_FORMAT=%Y-%m-%d
-MIN_CONFIDENCE=0.6
-FILENAME_PATTERN={date}_{type}_{summary}.pdf
-CHECK_INTERVAL=60
-# Web Interface
-WEB_PORT=8080
-# Logging
-LOG_LEVEL=INFO
+cp .env.example .env
+# Edit .env to set WEBDAV_USERNAME, WEBDAV_PASSWORD, OLLAMA_BASE_URL, etc.
+docker compose up -d
 ```
 
-### Configuration Options
+Any variable not set in `.env` will automatically use its built-in default.
+
+### Full Reference — Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WEBDAV_URL` | http://nas.local/webdav | URL of your WebDAV server |
-| `WEBDAV_USERNAME` | - | WebDAV username |
-| `WEBDAV_PASSWORD` | - | WebDAV password |
-| `WEBDAV_WATCH_FOLDER` | /incoming | Folder to monitor for new PDFs |
-| `WEBDAV_OUTPUT_FOLDER` | /processed | Folder to save processed files |
-| `OLLAMA_BASE_URL` | http://localhost:11434 | Ollama API base URL (use your Ollama server's IP/hostname) |
-| `OLLAMA_MODEL` | llama3.2 | Local model to use for analysis |
-| `SCAN_DATE_FORMAT` | %Y-%m-%d | Date format for generated filenames |
-| `MIN_CONFIDENCE` | 0.6 | Minimum confidence score for processing |
-| `FILENAME_PATTERN` | {date}_{type}_{summary}.pdf | Pattern for new filenames |
-| `CHECK_INTERVAL` | 60 | Seconds between file checks |
-| `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `WEBDAV_URL` | `http://nas.local/webdav` | URL of your WebDAV server |
+| `WEBDAV_USERNAME` | — | WebDAV username |
+| `WEBDAV_PASSWORD` | — | WebDAV password |
+| `WEBDAV_WATCH_FOLDER` | `/incoming` | Folder to monitor for new PDFs |
+| `WEBDAV_OUTPUT_FOLDER` | `/processed` | Folder to save processed files |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
+| `OLLAMA_MODEL` | `llama3.2` | Local model to use for analysis |
+| `OLLAMA_WOL_ENABLED` | `false` | Enable Wake-on-LAN to wake up Ollama server |
+| `OLLAMA_MAC_ADDRESS` | — | MAC address of Ollama server's NIC |
+| `OLLAMA_BROADCAST_HOST` | `[IP_ADDRESS]` | Broadcast IP for WOL magic packet |
+| `OLLAMA_WOL_PORT` | `9` | UDP port for WOL magic packet |
+| `OLLAMA_WOL_RETRIES` | `10` | Max retries waiting for Ollama to become available |
+| `OLLAMA_WOL_RETRY_DELAY` | `5.0` | Seconds between WOL retry attempts |
+| `SCAN_DATE_FORMAT` | `%Y-%m-%d` | Date format for generated filenames |
+| `MIN_CONFIDENCE` | `0.6` | Minimum confidence score for processing |
+| `FILENAME_PATTERN` | `{date}_{type}_{summary}.pdf` | Pattern for new filenames |
+| `CHECK_INTERVAL` | `60` | Seconds between file checks (0 = disable auto-check) |
+| `WEB_HOST` | `[IP_ADDRESS]` | Host to bind the web interface to |
+| `WEB_PORT` | `8080` | Port for the web interface |
+| `DATA_DIR` | `./data` | Local directory for temporary file storage |
+| `LOGS_DIR` | `./logs` | Directory for log files |
+| `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
+
+> **Note:** All defaults are defined once in `src/config.py`. If you ever need
+> to reset to factory defaults, simply remove the variable from your `.env`
+> file.
 
 ### Filename Pattern Placeholders
 
@@ -179,10 +206,10 @@ When running with Docker Compose, the web interface is available at:
 http://localhost:8080
 ```
 
-Or configure the port using the `WEB_PORT` environment variable:
+Or configure the host and port using environment variables:
 
 ```bash
-WEB_PORT=9090 docker compose up -d
+WEB_HOST=0.0.0.0 WEB_PORT=9090 docker compose up -d
 ```
 
 ### Web Interface Dashboard
@@ -238,8 +265,17 @@ To open in a dev container:
 ├── .github/workflows/      # CI/CD
 │   └── docker-publish.yml  # Builds & pushes image to GHCR
 ├── src/                    # Application source
+│   ├── config.py           # Centralized settings with defaults
+│   ├── main.py             # PDF processor core
+│   ├── webapp.py           # Flask web interface
+│   ├── utils/
+│   │   └── wol.py          # Wake-on-LAN utilities
+│   └── templates/
+│       └── index.html      # Web dashboard
 ├── tests/                  # Test suite
 ├── data/                   # Sample PDFs (tracked with Git LFS)
+├── .env.example            # Reference for all configurable variables
+├── .gitignore
 ├── AGENTS.md               # Copilot agent instructions
 └── README.md
 ```
