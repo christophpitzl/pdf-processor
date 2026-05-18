@@ -10,7 +10,7 @@ services:
        - WEBDAV_WATCH_FOLDER=${WEBDAV_WATCH_FOLDER:-/incoming}
        - WEBDAV_OUTPUT_FOLDER=${WEBDAV_OUTPUT_FOLDER:-/processed}
        - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://localhost:11434}
-       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3.5:0.8b}
        - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
        - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
        - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}

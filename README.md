@@ -30,7 +30,7 @@ All processing happens entirely on your local infrastructure — no sensitive do
 - Docker and Docker Compose installed
 - Access to a WebDAV server (e.g., Nextcloud, Synology NAS, etc.)
 - [Ollama](https://ollama.com/) installed and running separately on your host or another machine
-- A local LLM model pulled in Ollama (e.g., `llama3.2`, `mistral`, `gemma2`)
+- A local LLM model pulled in Ollama (e.g., `qwen3.5:0.8b`, `mistral`, `gemma2`)
 
 ## Usage
 
@@ -50,7 +50,7 @@ Then pull your desired model:
 
 ```bash
 # Pull the default model
-ollama pull llama3.2
+ollama pull qwen3.5:0.8b
 
 # Or pick another model (mistral, gemma2, etc.)
 ollama pull mistral
@@ -68,12 +68,18 @@ Copy the reference env file and edit only what differs from the defaults:
 cp .env.example .env
 # Edit .env — at minimum set WEBDAV_USERNAME, WEBDAV_PASSWORD, and OLLAMA_BASE_URL
 # All other variables will use their built-in defaults automatically.
+
+docker compose up -d
 ```
 
-Then run:
-
+View logs:
 ```bash
-docker compose up -d
+docker compose logs -f
+```
+
+Stop the container:
+```bash
+docker compose down
 ```
 
 #### Using the GHCR image
@@ -119,33 +125,11 @@ When WOL is enabled, the processor will:
 
 > **Note**: WOL requires that your Ollama server's network interface supports Wake-on-LAN and is configured to accept magic packets. The server must be on the same subnet or have a router that forwards WOL packets.
 
-### View Logs
-
-```bash
-docker compose logs -f
-```
-
-### Stop the Container
-
-```bash
-docker compose down
-```
-
 ## Configuration
 
 All configuration parameters have **sensible built-in defaults** defined in
 `src/config.py`. You only need to override the values you want to customize
 — via a `.env` file or environment variables.
-
-### Quick Start
-
-Copy the reference file and edit only what you need:
-
-```bash
-cp .env.example .env
-# Edit .env to set WEBDAV_USERNAME, WEBDAV_PASSWORD, OLLAMA_BASE_URL, etc.
-docker compose up -d
-```
 
 Any variable not set in `.env` will automatically use its built-in default.
 
@@ -159,7 +143,7 @@ Any variable not set in `.env` will automatically use its built-in default.
 | `WEBDAV_WATCH_FOLDER` | `/incoming` | Folder to monitor for new PDFs |
 | `WEBDAV_OUTPUT_FOLDER` | `/processed` | Folder to save processed files |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
-| `OLLAMA_MODEL` | `llama3.2` | Local model to use for analysis |
+| `OLLAMA_MODEL` | `qwen3.5:0.8b` | Local model to use for analysis |
 | `OLLAMA_WOL_ENABLED` | `false` | Enable Wake-on-LAN to wake up Ollama server |
 | `OLLAMA_MAC_ADDRESS` | — | MAC address of Ollama server's NIC |
 | `OLLAMA_BROADCAST_HOST` | `[IP_ADDRESS]` | Broadcast IP for WOL magic packet |
@@ -311,7 +295,7 @@ The processor uses Ollama, which gives you full control over which model to run 
 
 | Model | Parameters | RAM Required | Quality |
 |-------|-----------|--------------|---------|
-| **llama3.2** (default) | 3B | ~4GB | Good for structured output |
+| **qwen3.5:0.8b** (default) | 0.8B | ~1.6GB | Good for structured output |
 | **mistral** | 7B | ~8GB | Excellent document understanding |
 | **gemma2** | 9B | ~10GB | Great multilingual support |
 | **llama3.1** | 8B | ~8GB | Strong general purpose |
@@ -320,13 +304,13 @@ The processor uses Ollama, which gives you full control over which model to run 
 
 ```bash
 # Pull the default model
-docker compose exec ollama ollama pull llama3.2
+docker compose exec ollama ollama pull qwen3.5:0.8b
 
 # Pull an alternative model
 docker compose exec ollama ollama pull mistral
 ```
 
-> **💡 Tip:** Start with `llama3.2` — it's small, fast, and works well for document classification tasks.
+> **💡 Tip:** Start with `qwen3.5:0.8b` — it's small, fast, and works well for document classification tasks.
 - **google/gemini-1.5-flash** - Fast multimodal processing
 - **meta-llama/llama-3-70b-instruct** - Strong reasoning capabilities
 

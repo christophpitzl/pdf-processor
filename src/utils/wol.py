@@ -55,7 +55,7 @@ def wake_on_lan(
 
 def wait_for_ollama(
     ollama_base_url: str = "http://localhost:11434",
-    ollama_model: str = "llama3.2",
+    ollama_model: str = "qwen3.5:0.8b",
     max_retries: int = 10,
     retry_delay: float = 5.0,
 ) -> bool:

@@ -27,7 +27,7 @@ class Settings:
 
     # ─V─ Ollama ──────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
+    ollama_model: str = "qwen3.5:0.8b"
 
     # ─V─ Wake-on-LAN ─────────────────────────────────────────────────────
     ollama_wol_enabled: bool = False
@@ -73,7 +73,7 @@ class Settings:
             webdav_output_folder=os.getenv("WEBDAV_OUTPUT_FOLDER", "/processed"),
             # Ollama
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            ollama_model=os.getenv("OLLAMA_MODEL", "llama3.2"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:0.8b"),
             # WOL
             ollama_wol_enabled=os.getenv("OLLAMA_WOL_ENABLED", "false").lower()
             == "true",
