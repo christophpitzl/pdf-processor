@@ -95,7 +95,9 @@ Then start the container:
 docker compose up -d
 ```
 
-This will automatically pull the latest image from `ghcr.io/christophpitzl/pdf-processor:latest`.
+This will automatically pull the `latest` image from `ghcr.io/christophpitzl/pdf-processor:latest`.
+
+**Note:** The `latest` tag is now reserved for **stable production releases only** (updated on Git version tags like `v1.0.0`). For production use, consider pinning to a specific version tag (e.g., `v1.0.0`) for reproducibility. To get the latest main branch builds (may be unstable), use the `main` tag instead.
 
 #### Option 2: Building locally (for developers)
 
@@ -126,6 +128,13 @@ docker compose down
 
 #### Using the GHCR image directly
 
+**Available image tags:**
+- `latest` - Stable production releases only (updated on version tags like `v1.0.0`)
+- `main` - Latest main branch build (may be unstable, for testing)
+- `v1.0.0`, `v1.1.0`, etc. - Specific stable versions (recommended for production)
+- `sha-xxxxx` - Specific commit builds (for debugging)
+
+**Production use (stable releases):**
 ```bash
 docker run --rm -it \
   -e WEBDAV_URL=https://your-nas/webdav \
@@ -133,6 +142,26 @@ docker run --rm -it \
   -e WEBDAV_PASSWORD=pass \
   -e OLLAMA_BASE_URL=http://<your-ollama-server>:11434 \
   ghcr.io/christophpitzl/pdf-processor:latest
+```
+
+**Or pin to a specific version:**
+```bash
+docker run --rm -it \
+  -e WEBDAV_URL=https://your-nas/webdav \
+  -e WEBDAV_USERNAME=user \
+  -e WEBDAV_PASSWORD=pass \
+  -e OLLAMA_BASE_URL=http://<your-ollama-server>:11434 \
+  ghcr.io/christophpitzl/pdf-processor:v1.0.0
+```
+
+**Testing latest main branch:**
+```bash
+docker run --rm -it \
+  -e WEBDAV_URL=https://your-nas/webdav \
+  -e WEBDAV_USERNAME=user \
+  -e WEBDAV_PASSWORD=pass \
+  -e OLLAMA_BASE_URL=http://<your-ollama-server>:11434 \
+  ghcr.io/christophpitzl/pdf-processor:main
 ```
 
 ### Wake-on-LAN (WOL) — Wake Up Ollama Server Automatically

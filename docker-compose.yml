@@ -8,16 +8,27 @@
 #   3. Run: docker compose up -d
 #
 # The image will be pulled automatically from ghcr.io
-# Available tags: latest, main, v1.0.0, etc.
+#
+# TAGGING STRATEGY:
+# - 'latest': Stable production releases ONLY (updated on Git version tags like v1.0.0)
+# - 'main': Latest main branch build (may be unstable, for testing)
+# - 'v1.0.0', 'v1.1.0', etc.: Specific stable versions (recommended for production)
+# - 'sha-xxxxx': Specific commit builds (for debugging)
+# - 'develop', 'test': Branch-specific builds (for development/testing)
+#
+# PRODUCTION USE: Use specific version tags or 'latest' (stable releases only)
+# TESTING: Use 'main' tag to get latest main branch builds
 #
 # To build locally instead, replace 'image:' with 'build: .'
 
 services:
   pdf-processor:
     image: ghcr.io/your-username/pdf-processor:latest
-    # Alternative tags available:
-    # - ghcr.io/your-username/pdf-processor:v1.0.0  # specific version
-    # - ghcr.io/your-username/pdf-processor:main     # latest main branch
+    # RECOMMENDED FOR PRODUCTION: Use specific version tags
+    # - ghcr.io/your-username/pdf-processor:v1.0.0  # specific stable version
+    # - ghcr.io/your-username/pdf-processor:latest  # stable releases only (updated on version tags)
+    # FOR TESTING: Use main branch tag
+    # - ghcr.io/your-username/pdf-processor:main     # latest main branch (may be unstable)
     container_name: pdf-processor
     restart: unless-stopped
     environment:
