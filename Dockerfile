@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM --platform=$BUILDPLATFORM python:3.11-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,6 +27,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 # Expose web interface port
 EXPOSE 8080
+
+# Run the application
+# Use --web flag to start with web interface
+CMD ["python", "-m", "src.main", "--web"]
 
 # Run the application
 # Use --web flag to start with web interface
