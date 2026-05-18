@@ -44,3 +44,17 @@
 - Defaults defined once in `Settings`; all other files reference it
 - `.env.example` documents all env vars with defaults
 - `docker-compose.yml` passes env vars with shell defaults (`${VAR:-default}`)
+
+## Docker Version Tag Strategy
+
+- **Option 1 implemented**: Git tags control `latest` tag (not branch pushes)
+- **`latest` tag**: Only updated on Git version tags (e.g., `v1.0.0`, `v0.3.0`)
+- **`main` tag**: Applied to main branch builds (for testing, may be unstable)
+- **Version tags**: `v0.3.0`, `v0.3`, `v0` (semantic versioning)
+- **SHA tags**: `sha-xxxxx` for specific commit builds (debugging)
+- **User guidance**: 
+  - Production users should use specific version tags or `latest` (stable releases only)
+  - Testers should use `main` tag for latest main branch builds
+- **Multi-arch**: Images built for both `linux/amd64` and `linux/arm64`
+- **Base image**: `python:3.11-alpine` (smaller, more secure than Debian-based)
+- **Workflow file**: `.github/workflows/docker-publish.yml` handles tagging logic
