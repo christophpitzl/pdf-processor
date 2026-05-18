@@ -2,6 +2,8 @@
 
 [![GHCR](https://github.com/christophpitzl/pdf-processor/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/christophpitzl/pdf-processor/actions/workflows/docker-publish.yml)
 
+> A Docker-based tool that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using a local LLM via Ollama, and renames them based on the analyzed content.
+
 A Docker-based tool that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using a **local** LLM via Ollama, and renames them based on the analyzed content.
 
 ## Overview
