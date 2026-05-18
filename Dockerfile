@@ -30,5 +30,3 @@ EXPOSE 8080
 # Run the application
 # Use --web flag to start with web interface
 CMD ["python", "-m", "src.main", "--web"]
-# Use --web flag to start with web interface
-CMD ["python", "-m", "src.main", "--web"]
