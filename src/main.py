@@ -344,9 +344,8 @@ Only return valid JSON, no additional text."""
             # List files in watch folder
             files = self.webdav_client.list(self.watch_folder)
 
-            for file_info in files:
-                if file_info["resource_type"] == "file" and file_info["filename"].endswith(".pdf"):
-                    filename = file_info["filename"]
+            for filename in files:
+                if isinstance(filename, str) and filename.endswith(".pdf"):
                     file_path = os.path.join(self.watch_folder, filename)
 
                     # Check if already processed (using file hash)
