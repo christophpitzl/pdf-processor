@@ -2,12 +2,11 @@
 # This file pulls the pre-built image - no local build required
 #
 # Before using:
-#   1. Replace 'your-username' with the actual GitHub username or organization
-#      (e.g., ghcr.io/christophpitzl/pdf-processor:latest)
-#   2. Copy .env.example to .env and configure your settings
-#   3. Run: docker compose up -d
+#   1. Copy .env.example to .env and configure your settings
+#   2. Run: docker compose up -d
 #
 # The image will be pulled automatically from ghcr.io
+# Image: ghcr.io/christophpitzl/pdf-processor:latest
 #
 # TAGGING STRATEGY:
 # - 'latest': Stable production releases ONLY (updated on Git version tags like v1.0.0)
@@ -23,12 +22,12 @@
 
 services:
   pdf-processor:
-    image: ghcr.io/your-username/pdf-processor:latest
+    image: ghcr.io/christophpitzl/pdf-processor:latest
     # RECOMMENDED FOR PRODUCTION: Use specific version tags
-    # - ghcr.io/your-username/pdf-processor:v1.0.0  # specific stable version
-    # - ghcr.io/your-username/pdf-processor:latest  # stable releases only (updated on version tags)
+    # - ghcr.io/christophpitzl/pdf-processor:v1.0.0  # specific stable version
+    # - ghcr.io/christophpitzl/pdf-processor:latest  # stable releases only (updated on version tags)
     # FOR TESTING: Use main branch tag
-    # - ghcr.io/your-username/pdf-processor:main     # latest main branch (may be unstable)
+    # - ghcr.io/christophpitzl/pdf-processor:main     # latest main branch (may be unstable)
     container_name: pdf-processor
     restart: unless-stopped
     environment:
