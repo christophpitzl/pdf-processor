@@ -123,6 +123,13 @@ class PDFProcessor:
         else:
             logger.debug("WOL not enabled, skipping Ollama wake-up")
 
+        # Check Ollama connection
+        if not self.check_ollama_connection():
+            logger.warning(
+                "Ollama connection check failed. "
+                "Document analysis will fail if Ollama is not running."
+            )
+
     def _init_webdav_client(self) -> Optional[Client]:
         """Initialize and return WebDAV client."""
         if not self.webdav_username or not self.webdav_password:
@@ -255,6 +262,29 @@ class PDFProcessor:
             logger.error(f"Error extracting text from PDF: {e}")
             return ""
 
+    def check_ollama_connection(self) -> bool:
+        """Check if Ollama server is reachable and model is available."""
+        try:
+            # Check if Ollama is running
+            response = self.ollama_client.get("/api/tags", timeout=5.0)
+            response.raise_for_status()
+            models = response.json().get("models", [])
+
+            # Check if our model is available
+            model_names = [m.get("name", "") for m in models]
+            if self.ollama_model not in model_names:
+                logger.warning(f"Model '{self.ollama_model}' not found in Ollama. Available models: {model_names}")
+                return False
+
+            logger.info(f"Ollama connection successful, model '{self.ollama_model}' is available")
+            return True
+        except httpx.RequestError as e:
+            logger.error(f"Cannot connect to Ollama at {self.ollama_base_url}: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error checking Ollama connection: {e}")
+            return False
+
     def analyze_document_with_ai(self, text: str) -> Dict[str, Any]:
         """Analyze document content using a local Ollama model."""
         if not text:
@@ -276,7 +306,7 @@ Return a JSON object with the following structure:
 Document text:
 {text[:4000]}  # Limit text length for API
 
-Only return valid JSON, no additional text."""
+IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON."""
 
         try:
             response = self.ollama_client.post(
@@ -296,7 +326,35 @@ Only return valid JSON, no additional text."""
             )
             response.raise_for_status()
 
-            content = response.json()["message"]["content"].strip()
+            response_data = response.json()
+            logger.debug(f"Ollama full response: {response_data}")
+
+            # Extract content from response
+            if "message" not in response_data or "content" not in response_data["message"]:
+                logger.error(f"Unexpected Ollama response structure: {response_data}")
+                return {}
+
+            content = response_data["message"]["content"].strip()
+            logger.debug(f"Extracted content length: {len(content)}, content: {content[:200]}...")
+
+            if not content:
+                logger.error("Ollama returned empty content")
+                return {}
+
+            # Clean up markdown code blocks if present
+            # Models sometimes wrap JSON in ```json ... ``` blocks
+            if content.startswith("```"):
+                # Find the end of the code block
+                lines = content.split("\n")
+                cleaned_lines = []
+                in_code_block = False
+                for line in lines:
+                    if line.strip().startswith("```"):
+                        in_code_block = not in_code_block
+                        continue
+                    if in_code_block or not line.strip().startswith("```"):
+                        cleaned_lines.append(line)
+                content = "\n".join(cleaned_lines).strip()
 
             # Try to parse JSON from the response
             try:
@@ -305,11 +363,17 @@ Only return valid JSON, no additional text."""
                 json_end = content.rfind("}") + 1
                 if json_start != -1 and json_end > json_start:
                     content = content[json_start:json_end]
+                    logger.debug(f"Extracted JSON substring: {content[:200]}...")
+
+                if not content:
+                    logger.error("No JSON content found in Ollama response")
+                    return {}
+
                 result = json.loads(content)
                 return result
             except json.JSONDecodeError as e:
                 logger.error(f"Failed to parse Ollama response as JSON: {e}")
-                logger.debug(f"Response content: {content}")
+                logger.error(f"Response content that failed to parse: {content[:500]}")
                 return {}
 
         except httpx.RequestError as e:

@@ -5,7 +5,7 @@
 > A Docker-based tool that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using a local LLM via Ollama, and renames them based on the analyzed content.
 
 A Docker-based tool that monitors a WebDAV folder for newly uploaded PDF documents, analyzes their content using a **local** LLM via Ollama, and renames them based on the analyzed content.
-
+**Recommended Model**: `granite4.1:3b` - provides clean JSON responses without markdown wrapping.
 ## Overview
 
 This project solves the problem of disorganized PDF files that are uploaded from mobile scanning apps. Instead of keeping filenames based on scan timestamps, this processor:
@@ -32,7 +32,8 @@ All processing happens entirely on your local infrastructure — no sensitive do
 - Docker and Docker Compose installed
 - Access to a WebDAV server (e.g., Nextcloud, Synology NAS, etc.)
 - [Ollama](https://ollama.com/) installed and running separately on your host or another machine
-- A local LLM model pulled in Ollama (e.g., `qwen3.5:0.8b`, `mistral`, `gemma2`)
+- A local LLM model pulled in Ollama (e.g., `granite4.1:3b`, `qwen3.5:0.8b`, `mistral`, `gemma2`)
+  - **Note**: `granite4.1:3b` is recommended as it returns clean JSON without markdown code blocks
 
 ## Usage
 
@@ -51,8 +52,8 @@ ollama serve
 Then pull your desired model:
 
 ```bash
-# Pull the default model
-ollama pull qwen3.5:0.8b
+# Pull the recommended model (returns clean JSON)
+ollama pull granite4.1:3b
 
 # Or pick another model (mistral, gemma2, etc.)
 ollama pull mistral
@@ -71,7 +72,8 @@ cp .env.example .env
 Edit `.env` and set at minimum:
 - `WEBDAV_USERNAME` - Your WebDAV username
 - `WEBDAV_PASSWORD` - Your WebDAV password  
-- `OLLAMA_BASE_URL` - URL of your Ollama server (e.g., `http://192.168.1.100:11434`)
+- `OLLAMA_BASE_URL` - URL of your Ollama server (e.g., `http://ollama.pitzl.net:11434`)
+- `OLLAMA_MODEL` - Model to use (default: `granite4.1:3b`)
 
 All other variables have built-in defaults and can be left as-is.
 

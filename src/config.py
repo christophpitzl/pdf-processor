@@ -27,7 +27,7 @@ class Settings:
 
     # ─V─ Ollama ──────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3.5:0.8b"
+    ollama_model: str = "granite4.1:3b"
 
     # ─V─ Wake-on-LAN ─────────────────────────────────────────────────────
     ollama_wol_enabled: bool = False

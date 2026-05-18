@@ -45,6 +45,14 @@
 - `.env.example` documents all env vars with defaults
 - `docker-compose.yml` passes env vars with shell defaults (`${VAR:-default}`)
 
+## Ollama Integration
+
+- **Recommended model**: `granite4.1:3b` — returns clean JSON without markdown code blocks
+- **JSON parsing**: Code in `src/main.py` handles models that wrap JSON in markdown (```json ... ```)
+- **Connection check**: `check_ollama_connection()` method validates Ollama availability at startup
+- **Error handling**: Enhanced logging shows full response content when JSON parsing fails
+- **Default config**: `OLLAMA_BASE_URL=http://ollama.pitzl.net:11434`, `OLLAMA_MODEL=granite4.1:3b`
+
 ## Docker Version Tag Strategy
 
 - Git tags control `latest` tag (not branch pushes)
