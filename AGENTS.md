@@ -37,3 +37,10 @@
 - Keep **Git LFS** tracking for `*.pdf` files — run `git lfs track "*.pdf"` before adding PDFs.
 - Use `pathlib.Path` for all filesystem operations (not `os.path`).
 - Prefer `dataclasses` or `Pydantic` models for data structures over plain dicts.
+
+## Project Memory
+
+- Config centralized in `src/config.py` via `Settings` dataclass with `from_env()` factory
+- Defaults defined once in `Settings`; all other files reference it
+- `.env.example` documents all env vars with defaults
+- `docker-compose.yml` passes env vars with shell defaults (`${VAR:-default}`)
