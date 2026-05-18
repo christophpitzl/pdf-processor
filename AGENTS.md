@@ -47,7 +47,7 @@
 
 ## Docker Version Tag Strategy
 
-- **Option 1 implemented**: Git tags control `latest` tag (not branch pushes)
+- Git tags control `latest` tag (not branch pushes)
 - **`latest` tag**: Only updated on Git version tags (e.g., `v1.0.0`, `v0.3.0`)
 - **`main` tag**: Applied to main branch builds (for testing, may be unstable)
 - **Version tags**: `v0.3.0`, `v0.3`, `v0` (semantic versioning)
