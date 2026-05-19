@@ -203,7 +203,7 @@ Return a JSON object with the following structure:
 {{
     "document_type": "{document_types}",
     "date": "YYYY-MM-DD format if found, otherwise null",
-    "summary": "brief 2-4 word summary of the document content",
+    "summary": "brief 2-4 word summary, MAX 30 characters, of the document content",
     "confidence": 0.0-1.0 confidence score",
     "entities": ["list of important entities like company names, person names, etc."]
 }}
@@ -213,7 +213,9 @@ Return a JSON object with the following structure:
 Document text:
 {text[:4000]}  # Limit text length for API
 
-IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON."""
+IMPORTANT: 
+- Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON.
+- Keep the summary field under 30 characters. This is critical for filename length limits."""
 
         try:
             response = self.ollama_client.post(
@@ -324,15 +326,17 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             doc_type = "file"
 
         # Generate summary (slugified)
+        # AI is instructed to keep summary under 30 chars, but we still sanitize
         summary = analysis.get("summary", "document")
-        summary = re.sub(r"[^\w\s-]", "", summary)[:50]  # Limit length
+        summary = re.sub(r"[^\w\s-]", "", summary)[:35]  # Safety limit, AI should provide short summary
         summary = re.sub(r"[-\s]+", "_", summary).strip("_").lower()
 
-        # Extract entities for additional context
+        # Extract entities for additional context (only if summary is short enough)
         entities = analysis.get("entities", [])
-        if entities:
-            entity_str = entities[0].replace(" ", "_").lower()[:20]
-            summary = f"{summary}_{entity_str}" if len(summary) < 30 else summary
+        if entities and len(summary) < 25:
+            entity_str = entities[0].replace(" ", "_").lower()[:15]
+            if len(summary) + len(entity_str) + 1 <= 40:  # Keep total under 40 chars
+                summary = f"{summary}_{entity_str}"
 
         # Replace pattern placeholders
         filename = self.filename_pattern
