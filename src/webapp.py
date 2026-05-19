@@ -3,10 +3,13 @@ Web interface for PDF Processor.
 Provides a web UI to monitor status and trigger manual processing.
 """
 
+import os
 import threading
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+from webdav3.exceptions import WebDavException
 
 from flask import Flask, render_template, jsonify, request
 from loguru import logger
