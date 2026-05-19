@@ -78,7 +78,7 @@ class WebApp:
             while True:
                 watch_dir = self.processor.watch_dir.resolve()
                 if not watch_dir.exists():
-                    logger.error("NFS watch directory does not exist: " f"{watch_dir}")
+                    logger.error("Watch directory does not exist: " f"{watch_dir}")
                     break
 
                 pdf_files: List[Path] = sorted(
@@ -158,19 +158,19 @@ class WebApp:
         folders_status = {
             "data_dir": self._check_local_folder(self.processor.data_dir, "local"),
             "logs_dir": self._check_local_folder(self.processor.logs_dir, "local"),
-            "watch_dir": self._check_local_folder(str(self.processor.watch_dir), "nfs"),
+            "watch_dir": self._check_local_folder(str(self.processor.watch_dir), "host"),
             "output_dir": self._check_local_folder(
-                str(self.processor.output_dir), "nfs"
+                str(self.processor.output_dir), "host"
             ),
         }
         return folders_status
 
     def _check_local_folder(self, path_str: str, folder_type: str) -> Dict[str, Any]:
-        """Check a local/NFS filesystem folder.
+        """Check a filesystem folder.
 
         Args:
             path_str: Path to the folder.
-            folder_type: Type label ("local" or "nfs").
+            folder_type: Type label ("local" or "host").
 
         Returns:
             Dictionary with status information.
@@ -190,10 +190,10 @@ class WebApp:
         try:
             if not path.exists():
                 status["error"] = "Folder does not exist"
-                if folder_type == "nfs":
+                if folder_type == "host":
                     status["hint"] = (
-                        "Make sure the NFS share is mounted at this path. "
-                        "Run 'mount | grep nfs' to check."
+                        "Make sure this folder is mapped as a Docker volume "
+                        "in docker-compose.yml."
                     )
                 logger.warning(f"Folder does not exist: {path}")
                 return status
@@ -254,109 +254,44 @@ class WebApp:
         """Run all diagnostic checks and return structured results."""
         diagnostics = {
             "ollama": self._diagnose_ollama(),
-            "nfs": self._diagnose_nfs(),
-            "folders": self._check_folders(),
+            "folders": self._diagnose_folders(),
+            "folder_details": self._check_folders(),
             "configuration": self._diagnose_configuration(),
         }
         return diagnostics
 
-    def _diagnose_ollama(self) -> Dict[str, Any]:
-        """Check Ollama connectivity and model availability."""
+    def _diagnose_folders(self) -> Dict[str, Any]:
+        """Check incoming/processed folder accessibility."""
         result: Dict[str, Any] = {
-            "base_url": self.processor.ollama_base_url,
-            "model": self.processor.ollama_model,
-            "reachable": False,
-            "model_available": False,
-            "error": None,
-        }
-        try:
-            r = httpx.get(
-                f"{self.processor.ollama_base_url}/api/tags",
-                timeout=5.0,
-            )
-            if r.status_code == 200:
-                result["reachable"] = True
-                models = r.json().get("models", [])
-                available_models = [m["name"] for m in models]
-                result["available_models"] = available_models
-                configured = self.processor.ollama_model
-                result["model_available"] = any(
-                    configured in m for m in available_models
-                )
-            else:
-                result["error"] = f"HTTP {r.status_code}: {r.text[:200]}"
-        except httpx.ConnectError as e:
-            result["error"] = f"Connection refused: {e}"
-        except httpx.TimeoutException as e:
-            result["error"] = f"Connection timed out: {e}"
-        except Exception as e:
-            result["error"] = str(e)
-        return result
-
-    def _diagnose_nfs(self) -> Dict[str, Any]:
-        """Check NFS mount accessibility and directory contents."""
-        result: Dict[str, Any] = {
-            "watch_dir": str(self.processor.watch_dir),
-            "output_dir": str(self.processor.output_dir),
-            "watch_exists": False,
-            "output_exists": False,
-            "is_mounted": False,
+            "incoming_dir": str(self.processor.watch_dir),
+            "processed_dir": str(self.processor.output_dir),
+            "incoming_exists": False,
+            "processed_exists": False,
             "error": None,
         }
 
         watch = self.processor.watch_dir.resolve()
         output = self.processor.output_dir.resolve()
 
-        result["watch_exists"] = watch.exists()
-        result["output_exists"] = output.exists()
-
-        # Check if the path is on an NFS mount
-        try:
-            result["watch_fs_type"] = self._get_fs_type(watch)
-            result["output_fs_type"] = self._get_fs_type(output)
-            result["is_mounted"] = (
-                result["watch_fs_type"] == "nfs" or result["output_fs_type"] == "nfs"
-            )
-        except Exception as e:
-            result["fs_check_error"] = str(e)
+        result["incoming_exists"] = watch.exists()
+        result["processed_exists"] = output.exists()
 
         # List contents if they exist
         if watch.exists():
             try:
                 children = sorted([p.name for p in watch.iterdir()])
-                result["watch_contents"] = children
+                result["incoming_contents"] = children
             except Exception as e:
-                result["watch_list_error"] = str(e)
+                result["incoming_list_error"] = str(e)
 
         if output.exists():
             try:
                 children = sorted([p.name for p in output.iterdir()])
-                result["output_contents"] = children
+                result["processed_contents"] = children
             except Exception as e:
-                result["output_list_error"] = str(e)
+                result["processed_list_error"] = str(e)
 
         return result
-
-    def _get_fs_type(self, path: Path) -> str:
-        """Determine filesystem type for a given path using ``stat -f``.
-
-        Returns a string like ``"nfs"``, ``"ext4"``, ``"xfs"``, etc.
-        Falls back to ``"unknown"`` on failure.
-        """
-        try:
-            import subprocess
-
-            result = subprocess.run(
-                ["stat", "-f", "-c", "%T", str(path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0:
-                return result.stdout.strip().lower()
-        except Exception:
-            pass
-        return "unknown"
 
     def _diagnose_configuration(self) -> Dict[str, Any]:
         """Return sanitised configuration values for debugging."""
@@ -365,11 +300,8 @@ class WebApp:
             "ollama_base_url": s.ollama_base_url,
             "ollama_model": s.ollama_model,
             "ollama_wol_enabled": s.ollama_wol_enabled,
-            "nfs_watch_dir": s.nfs_watch_dir,
-            "nfs_output_dir": s.nfs_output_dir,
-            "nfs_server": s.nfs_server,
-            "nfs_export_path": s.nfs_export_path,
-            "nfs_mount_options": s.nfs_mount_options,
+            "incoming_dir": s.incoming_dir,
+            "processed_dir": s.processed_dir,
             "check_interval": s.check_interval,
             "scan_date_format": s.scan_date_format,
             "min_confidence": s.min_confidence,

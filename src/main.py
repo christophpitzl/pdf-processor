@@ -1,7 +1,11 @@
 """
 PDF Processor - Main Application
-Monitors NFS-mounted folder, processes PDF files with local AI (Ollama),
-and renames them based on content.
+Monitors a host-mounted folder for new PDF files, processes them with
+local AI (Ollama), and renames them based on content.
+
+Folders are mapped from the Docker host:
+  - /incoming  → drop PDFs here
+  - /processed → renamed PDFs appear here
 """
 
 import os
@@ -35,7 +39,7 @@ load_dotenv()
 
 
 class PDFProcessor:
-    """Main class for processing PDF files from an NFS-mounted directory."""
+    """Main class for processing PDF files from a host-mounted directory."""
 
     def __init__(self, settings: Optional[Settings] = None):
         """Initialize the PDF processor with configuration.
@@ -47,8 +51,8 @@ class PDFProcessor:
         self.settings = settings if settings is not None else Settings.from_env()
         s = self.settings  # short alias for convenience
 
-        self.watch_dir = Path(s.nfs_watch_dir)
-        self.output_dir = Path(s.nfs_output_dir)
+        self.watch_dir = Path(s.incoming_dir)
+        self.output_dir = Path(s.processed_dir)
         self.ollama_base_url = s.ollama_base_url
         self.ollama_model = s.ollama_model
         self.ollama_mac_address = s.ollama_mac_address
@@ -84,23 +88,8 @@ class PDFProcessor:
         # Track processed files to avoid duplicates (keyed by absolute path)
         self.processed_files: Dict[str, str] = {}
 
-        # Validate local directories
+        # Validate directories
         self._validate_required_directories()
-
-        # Log NFS mount status
-        if self.settings.nfs_server and self.settings.nfs_export_path:
-            logger.info(
-                f"NFS auto-mount configured: {self.settings.nfs_server}:{self.settings.nfs_export_path}"
-            )
-        else:
-            logger.warning(
-                "NFS_SERVER and/or NFS_EXPORT_PATH not set. "
-                "NFS auto-mount will not be performed. "
-                "Set these environment variables for automatic NFS mounting."
-            )
-
-        # Validate NFS directories
-        self._validate_nfs_directories()
 
         # Wake up Ollama server via WOL if enabled
         if self.ollama_wol_enabled and self.ollama_mac_address:
@@ -136,11 +125,13 @@ class PDFProcessor:
             )
 
     def _validate_required_directories(self) -> None:
-        """Validate and create local (non-NFS) directories if needed."""
-        data_path = Path(self.data_dir)
-        logs_path = Path(self.logs_dir)
-
-        for label, path in [("Data", data_path), ("Logs", logs_path)]:
+        """Validate and create required directories if needed."""
+        for label, path in [
+            ("Data", Path(self.data_dir)),
+            ("Logs", Path(self.logs_dir)),
+            ("Incoming", self.watch_dir),
+            ("Processed", self.output_dir),
+        ]:
             try:
                 if not path.exists():
                     logger.warning(f"{label} directory does not exist: {path}")
@@ -148,52 +139,16 @@ class PDFProcessor:
                     logger.info(f"Created {label.lower()} directory: {path}")
                 elif not path.is_dir():
                     logger.error(f"{label} path exists but is not a directory: {path}")
-                elif not os.access(str(path), os.R_OK | os.W_OK):
-                    logger.error(f"{label} directory is not readable/writable: {path}")
-                else:
-                    logger.debug(f"{label} directory validated: {path}")
-            except PermissionError:
-                logger.error(
-                    f"Permission denied accessing {label.lower()} directory: {path}"
-                )
-            except Exception as e:
-                logger.error(f"Error validating {label.lower()} directory {path}: {e}")
-
-    def _validate_nfs_directories(self) -> None:
-        """Validate that NFS watch and output directories are accessible."""
-        for label, path in [
-            ("NFS watch", self.watch_dir),
-            ("NFS output", self.output_dir),
-        ]:
-            try:
-                if not path.exists():
-                    logger.warning(
-                        f"{label} directory does not exist: {path}. "
-                        "If NFS auto-mount is configured, it should be created after mount."
-                    )
-                    path.mkdir(parents=True, exist_ok=True)
-                    logger.info(f"Created {label.lower()} directory: {path}")
-                    continue
-
-                if not path.is_dir():
-                    logger.error(f"{label} path exists but is not a directory: {path}")
-                    continue
-
-                if not os.access(str(path), os.R_OK):
+                elif not os.access(str(path), os.R_OK):
                     logger.error(f"{label} directory is not readable: {path}")
-                    continue
-
-                if not os.access(str(path), os.W_OK):
-                    logger.warning(
-                        f"{label} directory is not writable: {path}. "
-                        "Processing will fail if files cannot be moved here."
+                else:
+                    write_ok = (
+                        os.access(str(path), os.W_OK) if label != "Logs" else True
                     )
-                    continue
-
-                logger.info(
-                    f"{label} directory validated: {path} "
-                    f"({len(list(path.iterdir()))} items)"
-                )
+                    if not write_ok:
+                        logger.warning(f"{label} directory is not writable: {path}")
+                    else:
+                        logger.debug(f"{label} directory validated: {path}")
             except PermissionError:
                 logger.error(
                     f"Permission denied accessing {label.lower()} directory: {path}"
@@ -201,7 +156,7 @@ class PDFProcessor:
             except Exception as e:
                 logger.error(f"Error validating {label.lower()} directory {path}: {e}")
 
-        def extract_text_from_pdf(self, pdf_path: str) -> str:
+    def extract_text_from_pdf(self, pdf_path: str) -> str:
             """Extract text from PDF file using multiple methods."""
             text = ""
 
@@ -414,7 +369,7 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
         return filename
 
     def process_pdf(self, file_path: Path, original_filename: str) -> bool:
-        """Process a single PDF file from the NFS watch directory.
+        """Process a single PDF file from the watch directory.
 
         Args:
             file_path: Absolute path to the PDF file.
@@ -426,7 +381,7 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
         logger.info(f"Processing file: {original_filename}")
 
         try:
-            # Copy file to local data dir for processing (in case of NFS latency)
+            # Copy file to local data dir for processing (handles network latency)
             local_path = Path(self.data_dir) / original_filename
             shutil.copy2(str(file_path), str(local_path))
 
@@ -485,14 +440,14 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             return False
 
     def check_for_new_files(self) -> None:
-        """Check NFS watch directory for new PDF files to process."""
+        """Check the watch directory for new PDF files to process."""
         try:
             watch_path = self._resolve_watch_dir()
 
             if not watch_path.exists():
                 logger.warning(
                     f"Watch directory does not exist: {watch_path}. "
-                    "Make sure the NFS share is mounted."
+                    "Make sure the directory is mapped as a Docker volume."
                 )
                 return
 
@@ -524,15 +479,15 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
         except PermissionError:
             logger.error(
-                f"Permission denied reading NFS watch directory: " f"{self.watch_dir}"
+                f"Permission denied reading watch directory: " f"{self.watch_dir}"
             )
         except OSError as e:
-            logger.error(f"NFS I/O error checking for new files: {e}")
+            logger.error(f"I/O error checking for new files: {e}")
         except Exception as e:
             logger.error(f"Error checking for new files: {e}")
 
     def _resolve_watch_dir(self) -> Path:
-        """Resolve the NFS watch directory, following symlinks if needed.
+        """Resolve the watch directory, following symlinks if needed.
 
         Returns:
             The resolved Path.

@@ -420,23 +420,20 @@
         function renderDiagnostics(data) {
             let html = '<div class="diag-grid">';
 
-            // NFS card
-            const nfs = data.nfs || {};
-            const nfsWatchOk = nfs.watch_exists === true;
-            const nfsOutputOk = nfs.output_exists === true;
-            const nfsAnyOk = nfsWatchOk || nfsOutputOk;
+            // Folders card (incoming/processed)
+            const f = data.folders || {};
+            const incomingOk = f.incoming_exists === true;
+            const processedOk = f.processed_exists === true;
+            const foldersOk = incomingOk && processedOk;
             html += `<div class="diag-card">
-                <h3>📁 NFS Mount <span class="badge ${nfsAnyOk ? 'ok' : 'err'}">${nfsAnyOk ? 'OK' : 'FAIL'}</span></h3>
-                <div class="config-item"><strong>Watch dir:</strong> ${escHtml(nfs.watch_dir || '?')}</div>
-                <div class="config-item"><strong>Output dir:</strong> ${escHtml(nfs.output_dir || '?')}</div>
-                <div class="config-item ${nfsWatchOk ? 'ok' : 'err'}"><strong>Watch exists:</strong> ${nfs.watch_exists !== undefined ? nfs.watch_exists : '?'}</div>
-                <div class="config-item ${nfsOutputOk ? 'ok' : 'err'}"><strong>Output exists:</strong> ${nfs.output_exists !== undefined ? nfs.output_exists : '?'}</div>
-                <div class="config-item ${nfs.is_mounted ? 'ok' : nfs.is_mounted === false ? 'warn' : ''}"><strong>Is NFS mount:</strong> ${nfs.is_mounted !== undefined ? nfs.is_mounted : '?'}</div>
-                ${nfs.watch_fs_type ? `<div class="config-item"><strong>Watch FS type:</strong> ${escHtml(nfs.watch_fs_type)}</div>` : ''}
-                ${nfs.output_fs_type ? `<div class="config-item"><strong>Output FS type:</strong> ${escHtml(nfs.output_fs_type)}</div>` : ''}
-                ${nfs.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(nfs.error)}</div>` : ''}
-                ${nfs.watch_contents ? `<div class="config-item"><strong>Watch contents:</strong></div><pre>${escHtml(nfs.watch_contents.join('\n'))}</pre>` : ''}
-                ${nfs.output_contents ? `<div class="config-item"><strong>Output contents:</strong></div><pre>${escHtml(nfs.output_contents.join('\n'))}</pre>` : ''}
+                <h3>📁 Folders <span class="badge ${foldersOk ? 'ok' : 'err'}">${foldersOk ? 'OK' : 'FAIL'}</span></h3>
+                <div class="config-item"><strong>Incoming dir:</strong> ${escHtml(f.incoming_dir || '?')}</div>
+                <div class="config-item"><strong>Processed dir:</strong> ${escHtml(f.processed_dir || '?')}</div>
+                <div class="config-item ${incomingOk ? 'ok' : 'err'}"><strong>Incoming exists:</strong> ${f.incoming_exists !== undefined ? f.incoming_exists : '?'}</div>
+                <div class="config-item ${processedOk ? 'ok' : 'err'}"><strong>Processed exists:</strong> ${f.processed_exists !== undefined ? f.processed_exists : '?'}</div>
+                ${f.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(f.error)}</div>` : ''}
+                ${f.incoming_contents ? `<div class="config-item"><strong>Incoming contents:</strong></div><pre>${escHtml(f.incoming_contents.join('\n'))}</pre>` : ''}
+                ${f.processed_contents ? `<div class="config-item"><strong>Processed contents:</strong></div><pre>${escHtml(f.processed_contents.join('\n'))}</pre>` : ''}
             </div>`;
 
             // Ollama card
@@ -452,8 +449,8 @@
                 ${ol.available_models ? `<div class="config-item"><strong>Available models:</strong></div><pre>${escHtml(ol.available_models.join('\n'))}</pre>` : ''}
             </div>`;
 
-            // Folders card
-            const fg = data.folders || {};
+            // Folder Details card
+            const fg = data.folder_details || {};
             let folderRows = '';
             for (const [key, f] of Object.entries(fg)) {
                 const fOk = f.exists === true && f.error === null;
@@ -461,7 +458,7 @@
                 folderRows += `<div class="config-item ${fOk ? 'ok' : 'err'}">${icon} <strong>${key}:</strong> ${escHtml(f.path || '')}`;
                 if (f.error) folderRows += `<br><span class="err">❌ ${escHtml(f.error)}</span>`;
                 if (f.hint) folderRows += `<br><span class="warn"><small>💡 ${escHtml(f.hint)}</small></span>`;
-                if (f.type === 'local' || f.type === 'nfs') folderRows += ` (${f.file_count} items, read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
+                if (f.type === 'local' || f.type === 'host') folderRows += ` (${f.file_count} items, read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
                 folderRows += '</div>';
             }
             html += `<div class="diag-card">

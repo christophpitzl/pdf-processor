@@ -2,7 +2,7 @@
 
 [![GHCR](https://github.com/christophpitzl/pdf-processor/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/christophpitzl/pdf-processor/actions/workflows/docker-publish.yml)
 
-> A Docker-based tool that monitors an NFS-mounted folder for newly uploaded PDF documents, analyzes their content using a local LLM via Ollama, and renames them based on the analyzed content.
+> A Docker-based tool that monitors a host-mounted folder for newly uploaded PDF documents, analyzes their content using a local LLM via Ollama, and renames them based on the analyzed content.
 
 **Recommended Model**: `granite4.1:3b` - provides clean JSON responses without markdown wrapping.
 
@@ -10,33 +10,35 @@
 
 This project solves the problem of disorganized PDF files that are uploaded from mobile scanning apps. Instead of keeping filenames based on scan timestamps, this processor:
 
-1. Monitors an NFS-mounted directory for new PDF files
+1. Monitors `/incoming` (host-mounted folder) for new PDF files
 2. Extracts text content from PDFs (including OCR)
 3. Analyzes the content using a **local** AI model via Ollama (no cloud API calls)
 4. Generates meaningful filenames based on document type, date, and summary
-5. Moves processed files to an output folder with the new name
+5. Moves processed files to `/processed` with the new name
 
 All processing happens entirely on your local infrastructure — no sensitive document data is ever sent to an external cloud provider.
 
 ## Features
 
-- **NFS Integration**: Watches directories on an NFS share — works with any NAS that exports NFS
+- **Host-Mounted Folders**: Map any host directories to `/incoming` and `/processed` via Docker volumes — works with local folders, NFS mounts on the host, or any filesystem your host can access
 - **Local AI Analysis**: Uses Ollama with local models — no data leaves your network
 - **Privacy-First**: All document content stays on-premises; no cloud API keys needed
 - **Smart Filename Generation**: Creates descriptive filenames like `2024-05-14_invoice_acme_corp.pdf`
 - **Configurable**: Easy to customize through environment variables
 - **Continuous Monitoring**: Runs as a daemon, checking for new files at regular intervals
 - **Web Dashboard**: Modern web UI for monitoring and manual processing triggers
+- **No Privileged Mode**: The container no longer needs `privileged: true` or `SYS_ADMIN` capabilities
 
 ## Prerequisites
 
 - Docker and Docker Compose installed
-- An NFS export from your NAS (Synology, QNAP, TrueNAS, etc.)
 - [Ollama](https://ollama.com/) installed and running separately on your host or another machine
 - A local LLM model pulled in Ollama (e.g., `granite4.1:3b`, `qwen3.5:0.8b`, `mistral`, `gemma2`)
   - **Note**: `granite4.1:3b` is recommended as it returns clean JSON without markdown code blocks
 
-**No manual NFS mounting required!** The container will automatically mount the NFS share at startup.
+**No NFS mounting inside the container!** Folders are mapped from the host via Docker volumes.
+Simply point the container at any host directory — your PDFs can be on a local disk, an NFS share
+mounted on the host, or any other filesystem your host can reach.
 
 ## Quick Start
 
@@ -64,23 +66,15 @@ ollama pull mistral
 
 Ollama will be available at `http://<your-ollama-server>:11434`. Note the IP address or hostname.
 
-### Step 2: Configure NFS Settings
+### Step 2: Create Host Folders
 
-Edit `.env` and configure your NFS server settings:
+Create the folders on your host that will hold the PDFs:
 
 ```bash
-# NFS server IP or hostname
-NFS_SERVER=<your-nfs-server>
-
-# Export path on the NFS server
-NFS_EXPORT_PATH=/volume1/pdf-processor
-
-# Subdirectories inside the export (defaults shown)
-# NFS_INCOMING_SUBDIR=/incoming
-# NFS_PROCESSED_SUBDIR=/processed
+mkdir -p /path/to/pdf-incoming /path/to/pdf-processed
 ```
 
-The container will automatically mount the NFS share at startup and derive the internal paths. Configure your scanning app (e.g., Adobe Scan, CamScanner) to upload PDFs into the `incoming` subfolder on the NFS share.
+Configure your scanning app (e.g., Adobe Scan, CamScanner) to upload PDFs to `/path/to/pdf-incoming`.
 
 ### Step 3: Configure Environment
 
@@ -92,11 +86,7 @@ cp .env.example .env
 
 Edit `.env` and set at minimum:
 
-- `NFS_SERVER` — IP or hostname of your NFS server
-- `NFS_EXPORT_PATH` — Export path on the NFS server (e.g., `/volume1/pdf-processor`)
 - `OLLAMA_BASE_URL` — URL of your Ollama server (e.g., `http://<your-ollama-server>:11434`)
-
-All other variables have built-in defaults. The container will automatically mount the NFS share and derive the internal paths (e.g. `/mnt/nfs/incoming` for input, `/mnt/nfs/processed` for output) from `NFS_INCOMING_SUBDIR` and `NFS_PROCESSED_SUBDIR`.
 
 All other variables have built-in defaults.
 
@@ -110,22 +100,39 @@ This will pull the `latest` image from `ghcr.io/christophpitzl/pdf-processor`.
 
 The web interface is available at `http://localhost:8080`.
 
+### Folder Layout
+
+The container uses host-mounted volumes — no NFS mounting inside the container:
+
+```
+Host machine:
+  /path/to/pdf-incoming/        # Drop PDFs here (mapped to /incoming in container)
+  /path/to/pdf-processed/       # Renamed PDFs appear here (mapped to /processed)
+
+Container:
+  /incoming/                    # Watch directory (mapped from host)
+  /processed/                   # Output directory (mapped from host)
+  /app/data/                    # Internal temp storage (not user-facing)
+  /app/logs/                    # Application logs (not user-facing)
+```
+
+Configure the host paths in `docker-compose.yml` under `volumes`:
+
+```yaml
+volumes:
+  - /path/to/pdf-incoming:/incoming
+  - /path/to/pdf-processed:/processed
+```
+
+> **💡 Tip:** If your scanning app uploads to `/mnt/nas/upload` and you want processed
+> files in `/mnt/nas/done`, just update the volume mappings in `docker-compose.yml`:
+> ```yaml
+> volumes:
+>   - /mnt/nas/upload:/incoming
+>   - /mnt/nas/done:/processed
+> ```
+
 ## Usage
-
-### NFS Folder Layout
-
-The NFS export is mounted at `/mnt/nfs/` inside the container (auto-mounted at startup).
-The actual input and output subdirectories are derived from your configuration:
-
-```
-/mnt/nfs/              # NFS mount root (auto-mounted by container)
-├── incoming/          # Drop PDFs here (default, configurable via NFS_INCOMING_SUBDIR)
-└── processed/         # Renamed PDFs appear here (configurable via NFS_PROCESSED_SUBDIR)
-```
-
-> **💡 Tip:** If your scanning app uploads to a folder called `upload` and you want processed
-> files in `done`, just set `NFS_INCOMING_SUBDIR=/upload` and `NFS_PROCESSED_SUBDIR=/done`.
-> No need to think about container-internal paths!
 
 ### Web Interface
 
@@ -134,18 +141,18 @@ The dashboard provides:
 - **Processing status** — Idle or running
 - **Output count** — Successfully processed PDFs
 - **Start Processing** button — manually trigger batch processing
-- **Run Diagnostics** button — comprehensive system health check (NFS mount, Ollama, folders)
+- **Run Diagnostics** button — comprehensive system health check (folders, Ollama, config)
 - **Configuration display** — shows current settings
 
-### Architecture Change: WebDAV → NFS
+### Architecture Change: Internal NFS → Host-Mounted Volumes
 
-This version replaces the previous WebDAV-based file access with direct NFS filesystem operations. Benefits:
+This version replaces the previous internal NFS auto-mounting with host-managed volume mounts. Benefits:
 
-- **No HTTP overhead** — files are read/written directly via the local filesystem
-- **No credentials** — NFS handles authentication at the mount level
-- **Simpler code** — uses standard Python `pathlib` and `shutil` instead of a remote client library
-- **Better performance** — file operations are as fast as the network and NFS protocol allow
-- **Fewer failure modes** — eliminates HTTP errors, SSL issues, and WebDAV-specific quirks
+- **No privileged mode required** — the container no longer needs `privileged: true` or `SYS_ADMIN`
+- **Simpler networking** — no need for the container to reach NFS servers directly
+- **More flexible storage** — the host can mount anything (NFS, SMB, local disk, etc.)
+- **Better security** — container runs with reduced privileges
+- **Standard Docker pattern** — uses standard Docker volume mounts familiar to all Docker users
 
 ## Configuration
 
@@ -155,11 +162,8 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFS_SERVER` | _(required)_ | NFS server IP or hostname |
-| `NFS_EXPORT_PATH` | _(required)_ | NFS export path on the server (e.g., `/volume1/webdav/pdf-processor`) |
-| `NFS_INCOMING_SUBDIR` | `/incoming` | Subdirectory inside the NFS export for incoming PDFs |
-| `NFS_PROCESSED_SUBDIR` | `/processed` | Subdirectory inside the NFS export for processed PDFs |
-| `NFS_MOUNT_OPTIONS` | `hard,intr,noatime` | NFS mount options |
+| `INCOMING_DIR` | `/incoming` | Container path for incoming PDFs (mapped via Docker volume) |
+| `PROCESSED_DIR` | `/processed` | Container path for processed PDFs (mapped via Docker volume) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `granite4.1:3b` | Local model to use for analysis |
 | `OLLAMA_WOL_ENABLED` | `false` | Enable Wake-on-LAN to wake up Ollama server |
@@ -177,7 +181,6 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 > **Note:** All defaults are defined once in `src/config.py`. If you ever need to reset to factory defaults, simply remove the variable from your `.env` file.
-> **Note:** `DATA_DIR` and `LOGS_DIR` have been removed from the user-facing configuration. These are now hardcoded to `/app/data` and `/app/logs` inside the container.
 
 ### Filename Pattern Placeholders
 
@@ -197,10 +200,6 @@ The PDF Processor includes a modern web interface for monitoring and controlling
   - `CHECK_INTERVAL=0` — Disables automatic checking, web interface only
   - `CHECK_INTERVAL=60` — Check every 60 seconds (default)
 
-### Accessing the Web Interface
-
-When running with Docker Compose, the web interface is available at:
-
 ```
 http://localhost:8080
 ```
@@ -219,18 +218,18 @@ The dashboard shows:
 2. **Processing Status** — Current state (Idle/Running)
 3. **Output Folder Count** — Number of successfully processed PDF documents
 4. **Manual Trigger Button** — Starts processing all documents in the input folder until empty
-5. **Diagnostics Button** — Runs a comprehensive health check (NFS mount, Ollama, folders, config)
+5. **Diagnostics Button** — Runs a comprehensive health check (folders, Ollama, config)
 6. **Configuration Display** — Shows current check interval setting
 
 ## Docker Compose
 
 The provided `docker-compose.yml` will:
 
-- Automatically mount the NFS share at container startup
-- Create `incoming/` and `processed/` subdirectories as needed
-- Run with elevated privileges (`privileged: true`) to allow NFS mounting
+- Map host folders to `/incoming` and `/processed` inside the container
+- Create the folders if they don't exist on the host
+- Run without privileged mode (no `SYS_ADMIN` capabilities needed)
 
-No manual NFS mounting on the host is required. Just configure `NFS_SERVER` and `NFS_EXPORT_PATH` in your `.env` file.
+Configure the host folder paths in `docker-compose.yml` under the `volumes` section to point at your directories.
 
 ## Local AI Model Selection
 
@@ -272,7 +271,8 @@ The AI can recognize and categorize various document types:
 
 ```
 ┌─────────────────────────────────┐
-│  Scanner App → NFS /incoming/   │
+│  Scanner App → /incoming/       │
+│  (host-mounted folder)          │
 └────────────┬────────────────────┘
              │
              ▼
@@ -301,7 +301,7 @@ The AI can recognize and categorize various document types:
              │
              ▼
 ┌─────────────────────────────────┐
-│  Copy → NFS /processed/         │
+│  Copy → /processed/             │
 │  Delete original from /incoming/│
 └─────────────────────────────────┘
 ```
@@ -372,51 +372,24 @@ Docker images are tagged with:
 |---|---|
 | `latest` | Stable production releases (updated on Git version tags) |
 | `v1.0.0`, `v0.3` | Semantic version tags |
-| `main` | Latest main branch build (may be unstable) |
-| `sha-xxxxx` | Specific commit builds |
 
 See the [packages page](https://github.com/christophpitzl/pdf-processor/pkgs/container/pdf-processor) for all available tags.
-       │
-       │ New PDF uploaded
-       ▼
-┌─────────────┐
-│  Download   │
-│   to temp   │
-└──────┬──────┘
-       │
-       │ Extract text
-       ▼
-┌─────────────┐
-│   PDF       │
-│  Analysis   │
-└──────┬──────┘
-       │
-       │ AI Analysis
-       ▼
-┌─────────────┐
-│  Generate   │
-│  filename   │
-└──────┬──────┘
-       │
-       │ Move processed file to
-       ▼
-┌──────────────────────┐
-│  NFS /processed/     │
-└──────────────────────┘
-```
 
 ## Troubleshooting
 
 ### Common Issues
 
-**1. NFS Mount Fails**
-- Verify `NFS_SERVER` and `NFS_EXPORT_PATH` are set correctly in `.env`
-- Ensure the NFS server is reachable from the container: `docker compose exec pdf-processor ping <nfs-server>`
-- Check container logs for mount errors: `docker compose logs pdf-processor`
-- Verify the container has privileged access (check `docker-compose.yml` has `privileged: true`)
-- Ensure NFS export path exists and is exported on the server: `showmount -e <nfs-server>`
+**1. Folders Not Accessible**
+- Verify the host directories exist and are readable/writable
+- Check Docker volume mappings in `docker-compose.yml` are correct
+- Check container logs: `docker compose logs pdf-processor`
+- The container will create the folders if they don't exist (if permissions allow)
 
 **2. AI Analysis Fails**
+- Verify Ollama is running: `curl http://<ollama-host>:11434/api/tags`
+- Check which model is pulled: `ollama list`
+- Ensure the model name in `OLLAMA_MODEL` matches a pulled model
+- If using a remote Ollama host, verify `OLLAMA_BASE_URL` is reachable
 - Verify Ollama is running: `curl http://<ollama-host>:11434/api/tags`
 - Check which model is pulled: `ollama list`
 - Ensure the model name in `OLLAMA_MODEL` matches a pulled model
@@ -465,5 +438,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## Acknowledgments
 
 - Uses [Ollama](https://ollama.com/) for local AI model inference
-- Built with Python, Docker, and NFS
+- Built with Python and Docker
 - PDF processing powered by PyPDF2 and pdfplumber
