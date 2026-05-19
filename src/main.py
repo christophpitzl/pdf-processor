@@ -13,9 +13,14 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from loguru import logger
 from dotenv import load_dotenv
+import urllib3
+from urllib3.exceptions import InsecureRequestWarning
 
 # Load environment variables
 load_dotenv()
+
+# Suppress InsecureRequestWarning for WebDAV with self-signed certs
+urllib3.disable_warnings(InsecureRequestWarning)
 
 # WebDAV client
 from webdav3.client import Client

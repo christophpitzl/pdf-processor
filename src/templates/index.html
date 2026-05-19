@@ -168,6 +168,77 @@
         .config-item strong {
             color: #667eea;
         }
+
+        .config-item.ok {
+            color: #28a745;
+        }
+        .config-item.err {
+            color: #dc3545;
+        }
+        .config-item.warn {
+            color: #e67e22;
+        }
+
+        .diag-section {
+            margin: 15px 0;
+            padding: 12px;
+            border-radius: 8px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+        }
+        .diag-section h3 {
+            font-size: 1rem;
+            margin-bottom: 8px;
+            color: #495057;
+        }
+        .diag-section pre {
+            font-size: 0.8rem;
+            background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge.ok {
+            background: #d4edda;
+            color: #155724;
+        }
+        .badge.err {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .badge.warn {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .diag-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .diag-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        .btn-secondary {
+            background: linear-gradient(135deg, #6c757d, #495057);
+            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
+            margin-left: 10px;
+        }
+        .btn-secondary:hover:not(:disabled) {
+            box-shadow: 0 8px 20px rgba(108, 117, 125, 0.6);
+        }
     </style>
 </head>
 <body>
@@ -197,6 +268,7 @@
         <div class="controls">
             <h2 style="color: #667eea; margin-bottom: 20px;">Manual Processing</h2>
             <button id="process-btn" onclick="startProcessing()">Start Processing</button>
+            <button id="diag-btn" class="btn-secondary" onclick="runDiagnostics()">🔍 Run Diagnostics</button>
             
             <div class="processing" id="processing-indicator">
                 <div class="spinner"></div>
@@ -213,6 +285,16 @@
                 <span style="color: #999; font-size: 0.9rem;">(0 = disabled)</span>
             </div>
         </div>
+
+        <div class="config" id="diagnostics-panel" style="display: none;">
+            <h2>🔍 Diagnostics</h2>
+            <div id="diagnostics-results">
+                <div class="diag-section">
+                    <p style="color: #666;">Running diagnostics...</p>
+                    <div class="spinner" style="width:24px;height:24px;margin:10px auto;"></div>
+                </div>
+            </div>
+        </div>
     </div>
     
     <script>
@@ -223,7 +305,9 @@
                 .then(response => response.json())
                 .then(data => {
                     document.getElementById('input-count').textContent = data.input_count;
-                    document.getElementById('output-count').textContent = data.output_count;
+                    const outputCount = data.output_count;
+                    document.getElementById('output-count').textContent = 
+                        outputCount < 0 ? 'Error' : outputCount;
                     document.getElementById('check-interval').textContent = data.check_interval;
                     
                     const statusEl = document.getElementById('processing-status');
@@ -293,7 +377,106 @@
             statusMsg.className = 'status ' + type;
             statusMsg.style.display = 'block';
         }
-        
+
+        function runDiagnostics() {
+            const panel = document.getElementById('diagnostics-panel');
+            const results = document.getElementById('diagnostics-results');
+            panel.style.display = 'block';
+            results.innerHTML = `
+                <div class="diag-section">
+                    <p style="color: #666;">Running diagnostics...</p>
+                    <div class="spinner" style="width:24px;height:24px;margin:10px auto;"></div>
+                </div>
+            `;
+            const btn = document.getElementById('diag-btn');
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+
+            fetch('/api/diagnostics')
+                .then(response => response.json())
+                .then(data => {
+                    results.innerHTML = renderDiagnostics(data);
+                })
+                .catch(error => {
+                    results.innerHTML = `
+                        <div class="diag-section">
+                            <h3>❌ Error</h3>
+                            <pre>${error}</pre>
+                        </div>
+                    `;
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                    btn.textContent = '🔍 Run Diagnostics';
+                });
+        }
+
+        function renderDiagnostics(data) {
+            let html = '<div class="diag-grid">';
+
+            // WebDAV card
+            const wd = data.webdav || {};
+            const wdOk = wd.connected === true;
+            html += `<div class="diag-card">
+                <h3>🌐 WebDAV <span class="badge ${wdOk ? 'ok' : 'err'}">${wdOk ? 'OK' : 'FAIL'}</span></h3>
+                <div class="config-item"><strong>URL:</strong> ${escHtml(wd.url || '?')}</div>
+                <div class="config-item ${wdOk ? 'ok' : 'err'}"><strong>Connected:</strong> ${wd.connected !== undefined ? wd.connected : '?'}</div>
+                ${wd.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(wd.error)}</div>` : ''}
+                ${wd.root_contents ? `<div class="config-item"><strong>Root items:</strong> ${wd.root_contents.length}</div><pre>${escHtml(wd.root_contents.join('\n'))}</pre>` : ''}
+            </div>`;
+
+            // Ollama card
+            const ol = data.ollama || {};
+            const olOk = ol.reachable === true;
+            html += `<div class="diag-card">
+                <h3>🧠 Ollama <span class="badge ${olOk ? 'ok' : 'err'}">${olOk ? 'OK' : 'FAIL'}</span></h3>
+                <div class="config-item"><strong>URL:</strong> ${escHtml(ol.base_url || '?')}</div>
+                <div class="config-item"><strong>Model:</strong> ${escHtml(ol.model || '?')}</div>
+                <div class="config-item ${olOk ? 'ok' : 'err'}"><strong>Reachable:</strong> ${ol.reachable !== undefined ? ol.reachable : '?'}</div>
+                <div class="config-item ${ol.model_available ? 'ok' : 'warn'}"><strong>Model available:</strong> ${ol.model_available !== undefined ? ol.model_available : '?'}</div>
+                ${ol.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(ol.error)}</div>` : ''}
+                ${ol.available_models ? `<div class="config-item"><strong>Available models:</strong></div><pre>${escHtml(ol.available_models.join('\n'))}</pre>` : ''}
+            </div>`;
+
+            // Folders card
+            const fg = data.folders || {};
+            let folderRows = '';
+            for (const [key, f] of Object.entries(fg)) {
+                const fOk = f.exists === true && f.error === null;
+                const icon = fOk ? '✅' : '❌';
+                folderRows += `<div class="config-item ${fOk ? 'ok' : 'err'}">${icon} <strong>${key}:</strong> ${escHtml(f.path || '')}`;
+                if (f.error) folderRows += `<br><span class="err">${escHtml(f.error)}</span>`;
+                if (f.type === 'local') folderRows += ` (read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
+                if (f.type === 'webdav') folderRows += ` (${f.file_count} files)`;
+                folderRows += '</div>';
+            }
+            html += `<div class="diag-card">
+                <h3>📁 Folder Checks</h3>
+                ${folderRows}
+            </div>`;
+
+            // Configuration card
+            const cfg = data.configuration || {};
+            let cfgRows = '';
+            for (const [key, val] of Object.entries(cfg)) {
+                if (key === 'ollama_password_configured' || key === 'ollama_username_configured') continue;
+                cfgRows += `<div class="config-item"><strong>${key}:</strong> ${escHtml(String(val))}</div>`;
+            }
+            html += `<div class="diag-card">
+                <h3>⚙️ Configuration</h3>
+                ${cfgRows}
+            </div>`;
+
+            html += '</div>';
+            return html;
+        }
+
+        function escHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
         // Update status every 2 seconds
         setInterval(updateStatus, 2000);
         

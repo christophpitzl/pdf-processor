@@ -13,6 +13,7 @@ from webdav3.exceptions import WebDavException
 
 from flask import Flask, render_template, jsonify, request
 from loguru import logger
+import httpx
 
 from src.main import PDFProcessor
 
@@ -33,6 +34,7 @@ class WebApp:
         self.app.route('/')(self.index)
         self.app.route('/api/status')(self.api_status)
         self.app.route('/api/process', methods=['POST'])(self.api_process)
+        self.app.route('/api/diagnostics')(self.api_diagnostics)
         
     def index(self):
         """Render main page."""
@@ -261,6 +263,111 @@ class WebApp:
             logger.error(f"Error checking WebDAV folder {folder_path}: {e}")
 
         return status
+
+    def api_diagnostics(self):
+        """Run comprehensive diagnostics and return results as JSON."""
+        try:
+            results = self._run_diagnostics()
+            return jsonify(results)
+        except Exception as e:
+            logger.error(f"Error running diagnostics: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    def _run_diagnostics(self) -> Dict[str, Any]:
+        """Run all diagnostic checks and return structured results."""
+        diagnostics = {
+            "ollama": self._diagnose_ollama(),
+            "webdav": self._diagnose_webdav(),
+            "folders": self._check_folders(),
+            "configuration": self._diagnose_configuration(),
+        }
+        return diagnostics
+
+    def _diagnose_ollama(self) -> Dict[str, Any]:
+        """Check Ollama connectivity and model availability."""
+        result = {
+            "base_url": self.processor.ollama_base_url,
+            "model": self.processor.ollama_model,
+            "reachable": False,
+            "model_available": False,
+            "error": None,
+        }
+        try:
+            r = httpx.get(
+                f"{self.processor.ollama_base_url}/api/tags",
+                timeout=5.0,
+            )
+            if r.status_code == 200:
+                result["reachable"] = True
+                models = r.json().get("models", [])
+                available_models = [m["name"] for m in models]
+                result["available_models"] = available_models
+                # Check if configured model is in the list (Ollama may return
+                # tags like "granite4.1:3b" or "granite4.1:3b (some variant)")
+                configured = self.processor.ollama_model
+                result["model_available"] = any(
+                    configured in m for m in available_models
+                )
+            else:
+                result["error"] = f"HTTP {r.status_code}: {r.text[:200]}"
+        except httpx.ConnectError as e:
+            result["error"] = f"Connection refused: {e}"
+        except httpx.TimeoutException as e:
+            result["error"] = f"Connection timed out: {e}"
+        except Exception as e:
+            result["error"] = str(e)
+        return result
+
+    def _diagnose_webdav(self) -> Dict[str, Any]:
+        """Check WebDAV connectivity and folder accessibility."""
+        result = {
+            "url": self.processor.webdav_url,
+            "connected": False,
+            "error": None,
+        }
+        if not self.processor.webdav_client:
+            result["error"] = "WebDAV client not initialized"
+            return result
+
+        try:
+            # Quick connectivity probe: try to list root
+            root_list = self.processor.webdav_client.list("/")
+            result["connected"] = True
+            result["root_contents"] = (
+                [str(f) for f in root_list] if root_list else []
+            )
+        except WebDavException as e:
+            result["error"] = f"WebDAV error: {e}"
+        except Exception as e:
+            result["error"] = str(e)
+        return result
+
+    def _diagnose_configuration(self) -> Dict[str, Any]:
+        """Return sanitised configuration values for debugging."""
+        s = self.processor.settings
+        return {
+            "ollama_base_url": s.ollama_base_url,
+            "ollama_model": s.ollama_model,
+            "ollama_wol_enabled": s.ollama_wol_enabled,
+            "webdav_url": s.webdav_url,
+            "webdav_watch_folder": s.webdav_watch_folder,
+            "webdav_output_folder": s.webdav_output_folder,
+            "check_interval": s.check_interval,
+            "scan_date_format": s.scan_date_format,
+            "min_confidence": s.min_confidence,
+            "filename_pattern": s.filename_pattern,
+            "data_dir": s.data_dir,
+            "logs_dir": s.logs_dir,
+            "web_host": s.web_host,
+            "web_port": s.web_port,
+            "log_level": s.log_level,
+            "ollama_username_configured": (
+                s.webdav_username is not None
+            ),
+            "ollama_password_configured": (
+                s.webdav_password is not None
+            ),
+        }
 
     def run(self, host=None, port=None, debug=False):
         """Run the Flask app.
