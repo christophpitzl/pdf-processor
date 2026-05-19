@@ -133,7 +133,9 @@ class WebApp:
         self._processing = True
         try:
             logger.info("Manual processing started")
+            iteration = 0
             while True:
+                iteration += 1
                 watch_dir = self.processor.watch_dir.resolve()
                 if not watch_dir.exists():
                     logger.error("Watch directory does not exist: " f"{watch_dir}")
@@ -157,11 +159,30 @@ class WebApp:
                     logger.info("Input folder is empty, stopping manual processing")
                     break
 
-                logger.info(f"Found {len(pdf_files)} file(s) to process")
+                logger.info(
+                    f"Iteration {iteration}: Found {len(pdf_files)} file(s) to process"
+                )
                 self.processor.check_for_new_files()
 
                 # If stop was requested inside check_for_new_files, don't loop again
                 if self.processor._stop_requested:
+                    break
+
+                # Check if files were actually processed
+                remaining = [
+                    f
+                    for f in watch_dir.iterdir()
+                    if f.is_file() and f.suffix.lower() == ".pdf"
+                ]
+                logger.info(
+                    f"After processing: {len(remaining)} file(s) remaining in input folder"
+                )
+
+                if len(remaining) == len(pdf_files):
+                    logger.warning(
+                        "No files were processed in this iteration - possible issue"
+                    )
+                    # Don't infinite loop, break after logging
                     break
 
                 time.sleep(1)

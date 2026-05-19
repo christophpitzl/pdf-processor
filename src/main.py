@@ -395,6 +395,7 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
             if not analysis:
                 logger.warning(f"AI analysis failed for {original_filename}")
+                logger.warning(f"File remains in incoming for retry: {file_path.name}")
                 if local_path.exists():
                     local_path.unlink()
                 return False
@@ -413,6 +414,19 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
             # Move processed file to output directory with new name
             output_path = self.output_dir / new_filename
+
+            # Handle duplicate filenames in output
+            if output_path.exists():
+                logger.warning(f"Output file already exists: {output_path}")
+                # Add unique suffix to avoid overwriting
+                base = output_path.stem
+                suffix = output_path.suffix
+                counter = 1
+                while output_path.exists():
+                    output_path = self.output_dir / f"{base}_{counter}{suffix}"
+                    counter += 1
+                logger.info(f"Using alternative filename: {output_path.name}")
+                new_filename = output_path.name
 
             # Ensure output directory exists
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -490,22 +504,39 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
                 # Compute hash to check for duplicates
                 file_hash = self._get_file_hash(file_path)
 
-                if file_hash and file_hash not in self.processed_files:
-                    logger.info(f"Starting processing of: {file_path.name}")
-                    success = self.process_pdf(file_path, file_path.name)
-                    if success:
-                        self.processed_files[file_hash] = file_path.name
-                        logger.info(f"Completed processing: {file_path.name}")
-                    else:
-                        logger.error(
-                            f"Failed to process {file_path.name}. "
-                            f"File remains in incoming folder for retry."
+                # Only skip if file was successfully processed before
+                if file_hash and file_hash in self.processed_files:
+                    logger.debug(
+                        f"File already processed successfully: {file_path.name}"
+                    )
+                    # Remove from incoming since it's already processed
+                    try:
+                        file_path.unlink(missing_ok=True)
+                        logger.info(
+                            f"Removed duplicate from incoming: {file_path.name}"
                         )
-                    self.progress_current += 1
-                    if not success:
-                        self.progress_errors += 1
-                elif file_hash:
-                    logger.debug(f"File already processed: {file_path.name}")
+                    except Exception as e:
+                        logger.warning(
+                            f"Could not remove duplicate {file_path.name}: {e}"
+                        )
+                    continue
+
+                # Process the file
+                logger.info(f"Starting processing of: {file_path.name}")
+                success = self.process_pdf(file_path, file_path.name)
+                if success:
+                    # Only add to processed_files on success
+                    if file_hash:
+                        self.processed_files[file_hash] = file_path.name
+                    logger.info(f"Completed processing: {file_path.name}")
+                else:
+                    logger.error(
+                        f"Failed to process {file_path.name}. "
+                        f"File remains in incoming folder for retry."
+                    )
+                self.progress_current += 1
+                if not success:
+                    self.progress_errors += 1
 
         except PermissionError:
             logger.error(
