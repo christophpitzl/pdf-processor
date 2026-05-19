@@ -189,19 +189,20 @@ class PDFProcessor:
             logger.warning("No text to analyze")
             return {}
 
-        # Determine language for summary generation
-        language_instruction = (
-            "Generate the summary in German language."
-            if self.language == "de"
-            else "Generate the summary in English language."
-        )
+        # Determine language for summary generation and document types
+        if self.language == "de":
+            language_instruction = "Generate the summary in German language."
+            document_types = "Rechnung|Quittung|Vertrag|Brief|Bericht|Sonstiges"
+        else:
+            language_instruction = "Generate the summary in English language."
+            document_types = "invoice|receipt|contract|letter|report|other"
 
         # Create prompt for document analysis
         prompt = f"""Analyze the following document text and extract key information.
 
 Return a JSON object with the following structure:
 {{
-    "document_type": "invoice|receipt|contract|letter|report|other",
+    "document_type": "{document_types}",
     "date": "YYYY-MM-DD format if found, otherwise null",
     "summary": "brief 2-4 word summary of the document content",
     "confidence": 0.0-1.0 confidence score",
@@ -478,8 +479,9 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
                 file_hash = self._get_file_hash(file_path)
 
                 if file_hash and file_hash not in self.processed_files:
-                    self.processed_files[file_hash] = file_path.name
                     success = self.process_pdf(file_path, file_path.name)
+                    if success:
+                        self.processed_files[file_hash] = file_path.name
                     self.progress_current += 1
                     if not success:
                         self.progress_errors += 1
