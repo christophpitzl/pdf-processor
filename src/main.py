@@ -94,8 +94,11 @@ class PDFProcessor:
         # Validate local directories
         self._validate_local_directories()
 
-        # Validate WebDAV connection and folders
-        self._validate_webdav_folders()
+        # Validate WebDAV connection and folders (non-blocking)
+        try:
+            self._validate_webdav_folders()
+        except Exception as e:
+            logger.warning(f"WebDAV folder validation failed (non-critical): {e}")
 
         # Wake up Ollama server via WOL if enabled
         if self.ollama_wol_enabled and self.ollama_mac_address:
@@ -202,8 +205,12 @@ class PDFProcessor:
             logger.info(f"Checking WebDAV watch folder: {self.watch_folder}")
             if self.webdav_client.check(self.watch_folder):
                 # Try to list contents to verify readability
-                files = self.webdav_client.list(self.watch_folder)
-                logger.info(f"Watch folder accessible: {self.watch_folder} ({len(files)} items)")
+                try:
+                    files = self.webdav_client.list(self.watch_folder)
+                    logger.info(f"Watch folder accessible: {self.watch_folder} ({len(files)} items)")
+                except WebDavException as list_error:
+                    # 403 or other permission errors on list are non-critical
+                    logger.warning(f"Watch folder exists but listing failed (may be permission): {self.watch_folder} - {list_error}")
             else:
                 logger.warning(f"Watch folder does not exist on WebDAV: {self.watch_folder}")
                 # Attempt to create it
@@ -213,16 +220,21 @@ class PDFProcessor:
                 except Exception as e:
                     logger.error(f"Failed to create watch folder {self.watch_folder}: {e}")
         except WebDavException as e:
-            logger.error(f"WebDAV error accessing watch folder {self.watch_folder}: {e}")
+            logger.warning(f"WebDAV error accessing watch folder {self.watch_folder} (non-critical): {e}")
         except Exception as e:
-            logger.error(f"Error validating watch folder {self.watch_folder}: {e}")
+            logger.warning(f"Error validating watch folder {self.watch_folder} (non-critical): {e}")
 
         # Check output folder
         try:
             logger.info(f"Checking WebDAV output folder: {self.output_folder}")
             if self.webdav_client.check(self.output_folder):
-                files = self.webdav_client.list(self.output_folder)
-                logger.info(f"Output folder accessible: {self.output_folder} ({len(files)} items)")
+                # Try to list contents to verify readability
+                try:
+                    files = self.webdav_client.list(self.output_folder)
+                    logger.info(f"Output folder accessible: {self.output_folder} ({len(files)} items)")
+                except WebDavException as list_error:
+                    # 403 or other permission errors on list are non-critical
+                    logger.warning(f"Output folder exists but listing failed (may be permission): {self.output_folder} - {list_error}")
             else:
                 logger.warning(f"Output folder does not exist on WebDAV: {self.output_folder}")
                 try:
