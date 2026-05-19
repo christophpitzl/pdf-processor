@@ -28,6 +28,7 @@ class WebApp:
         self._setup_routes()
         self._processing = False
         self._processing_thread: Optional[threading.Thread] = None
+        self._ollama_available: bool = processor.check_ollama_connection()
 
     def _setup_routes(self):
         """Setup Flask routes."""
@@ -36,6 +37,7 @@ class WebApp:
         self.app.route("/api/process", methods=["POST"])(self.api_process)
         self.app.route("/api/stop", methods=["POST"])(self.api_stop)
         self.app.route("/api/language", methods=["POST"])(self.api_language)
+        self.app.route("/api/ollama/retry", methods=["POST"])(self.api_ollama_retry)
 
     def index(self):
         """Render main page."""
@@ -93,6 +95,18 @@ class WebApp:
         self.processor.language = lang
         logger.info(f"Language changed to: {lang}")
         return jsonify({"status": "ok", "message": f"Language set to {lang}"})
+
+    def api_ollama_retry(self):
+        """Retry Ollama connection check."""
+        try:
+            self._ollama_available = self.processor.check_ollama_connection()
+            if self._ollama_available:
+                return jsonify({"status": "ok", "message": "Ollama connection successful"})
+            else:
+                return jsonify({"status": "error", "message": "Ollama connection failed"}), 503
+        except Exception as e:
+            logger.error(f"Error retrying Ollama connection: {e}")
+            return jsonify({"status": "error", "message": str(e)}), 500
 
     def _process_until_empty(self):
         """Process files until input folder is empty or stop requested."""
@@ -166,6 +180,7 @@ class WebApp:
             "processing": self._processing,
             "check_interval": self.processor.check_interval,
             "language": self.processor.language,
+            "ollama_available": self._ollama_available,
             "progress": {
                 "total": self.processor.progress_total,
                 "current": self.processor.progress_current,

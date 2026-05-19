@@ -243,6 +243,15 @@
         .language-select:focus {
             border-color: #764ba2;
         }
+        
+        .ollama-warning {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
     </style>
 </head>
 <body>
@@ -267,10 +276,24 @@
                 <div class="stat" id="output-count">-</div>
                 <div class="stat-label">Processed PDF documents</div>
             </div>
+            
+            <div class="card">
+                <h2>🤖 Ollama AI</h2>
+                <div class="stat" id="ollama-status">-</div>
+                <div class="stat-label">AI document analysis engine</div>
+                <div style="margin-top: 15px;">
+                    <button id="ollama-retry-btn" class="btn-secondary" onclick="retryOllama()" style="display: none; padding: 8px 20px; font-size: 0.9rem;">Try Again</button>
+                </div>
+            </div>
         </div>
         
         <div class="controls">
             <h2 style="color: #667eea; margin-bottom: 20px;">Manual Processing</h2>
+            
+            <div id="ollama-warning" class="ollama-warning" style="display: none;">
+                <p>⚠️ <strong>Ollama is not available.</strong> Document analysis requires a running Ollama instance. 
+                You can still monitor folders and try again later.</p>
+            </div>
             <div class="controls-row">
                 <button id="process-btn" onclick="startProcessing()">Start Processing</button>
                 <button id="stop-btn" class="btn-danger" onclick="stopProcessing()" disabled>Stop</button>
@@ -334,6 +357,22 @@
                     } else {
                         statusEl.textContent = 'Idle';
                         statusEl.style.color = '#333';
+                    }
+                    
+                    // Ollama status
+                    const ollamaStatusEl = document.getElementById('ollama-status');
+                    const ollamaWarning = document.getElementById('ollama-warning');
+                    const ollamaRetryBtn = document.getElementById('ollama-retry-btn');
+                    if (data.ollama_available) {
+                        ollamaStatusEl.textContent = 'Connected';
+                        ollamaStatusEl.style.color = '#28a745';
+                        ollamaWarning.style.display = 'none';
+                        ollamaRetryBtn.style.display = 'none';
+                    } else {
+                        ollamaStatusEl.textContent = 'Disconnected';
+                        ollamaStatusEl.style.color = '#dc3545';
+                        ollamaWarning.style.display = 'block';
+                        ollamaRetryBtn.style.display = 'inline-block';
                     }
                     
                     isProcessing = data.processing;
@@ -447,6 +486,35 @@
             })
             .catch(error => {
                 showStatus('Error changing language: ' + error, 'error');
+            });
+        }
+        
+        function retryOllama() {
+            const btn = document.getElementById('ollama-retry-btn');
+            btn.disabled = true;
+            btn.textContent = 'Retrying...';
+            
+            fetch('/api/ollama/retry', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    showStatus('Ollama connection established!', 'success');
+                    updateStatus();
+                } else {
+                    showStatus(data.message || 'Ollama connection failed', 'error');
+                }
+                btn.disabled = false;
+                btn.textContent = 'Try Again';
+            })
+            .catch(error => {
+                showStatus('Error retrying connection: ' + error, 'error');
+                btn.disabled = false;
+                btn.textContent = 'Try Again';
             });
         }
         
