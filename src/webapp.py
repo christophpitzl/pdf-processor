@@ -279,9 +279,18 @@ class WebApp:
 
         except WebDavException as e:
             status["error"] = f"WebDAV error: {e}"
+            status["hint"] = (
+                "The configured folder path may be wrong. "
+                "Check the WebDAV tree (above) for the correct folder names. "
+                "Folders are relative to WEBDAV_URL."
+            )
             logger.error(f"WebDAV error checking folder {folder_path}: {e}")
         except Exception as e:
             status["error"] = str(e)
+            status["hint"] = (
+                "The configured folder path may be wrong. "
+                "Check the WebDAV tree (above) for the correct folder names."
+            )
             logger.error(f"Error checking WebDAV folder {folder_path}: {e}")
 
         return status
@@ -355,13 +364,75 @@ class WebApp:
             # Quick connectivity probe: try to list root
             root_list = self.processor.webdav_client.list("/")
             result["connected"] = True
-            result["root_contents"] = (
-                [str(f) for f in root_list] if root_list else []
-            )
+
+            # webdavclient3 list() may include the root collection itself as
+            # the first entry (since PROPFIND depth=1 returns the queried
+            # collection).  Filter it out so users only see actual children.
+            raw_items = [str(f) for f in root_list] if root_list else []
+
+            # The self-reference is the last path segment of the WebDAV URL
+            root_name = self.processor.webdav_url.rstrip("/").rsplit("/", 1)[-1]
+            children = [
+                item for item in raw_items
+                if item.rstrip("/") != root_name
+            ]
+
+            result["root_contents"] = children  # filtered — actual children only
+            result["root_self_reference"] = root_name  # what we filtered out
+
+            # Build a hierarchical tree for a clear view of the folder structure
+            tree = {}
+            for child in children:
+                name = child.rstrip("/")
+                if child.endswith("/"):  # directory
+                    tree[name] = self._list_webdav_tree(name, depth=2)
+                else:
+                    tree[name] = None  # file
+            result["tree"] = tree
+
         except WebDavException as e:
             result["error"] = f"WebDAV error: {e}"
         except Exception as e:
             result["error"] = str(e)
+        return result
+
+    def _list_webdav_tree(self, folder_name: str, depth: int = 2) -> Any:
+        """Recursively list a WebDAV subdirectory for the tree view.
+
+        Args:
+            folder_name: Basename of the directory (as returned by list()).
+            depth: Max recursion depth (1 = flat, 2 = one level deep, etc.)
+
+        Returns:
+            A dict mapping names to sub-trees (dirs) or None (files),
+            or a sentinel dict when depth is exceeded.
+        """
+        if depth <= 0:
+            return {"__depth_limit__": True}
+
+        if not self.processor.webdav_client:
+            return {"__error__": "no client"}
+
+        try:
+            items = self.processor.webdav_client.list(f"/{folder_name}")
+        except Exception:
+            return {"__error__": "cannot list"}
+
+        if not items:
+            return {"__empty__": True}
+
+        result = {}
+        for item in items:
+            name = str(item)
+            clean = name.rstrip("/")
+            # Skip self-reference (the directory itself returned by PROPFIND)
+            if clean == folder_name.rstrip("/"):
+                continue
+            if name.endswith("/"):  # directory
+                sub_path = f"{folder_name}/{clean}"
+                result[clean] = self._list_webdav_tree(sub_path, depth - 1)
+            else:
+                result[clean] = None  # file
         return result
 
     def _diagnose_configuration(self) -> Dict[str, Any]:
