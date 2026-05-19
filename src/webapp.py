@@ -240,20 +240,15 @@ class WebApp:
             return status
 
         try:
-            # Root path "/" is assumed to always exist — many WebDAV servers
-            # deny check("/") with a 403.
-            stripped = folder_path.strip("/")
-            if stripped and not self.processor.webdav_client.check(folder_path):
-                status["error"] = "Folder does not exist on WebDAV"
-                logger.warning(f"WebDAV folder does not exist: {folder_path}")
-                return status
-
-            status["exists"] = True
-
-            # Try to list contents to verify readability
+            # Try to list contents — if it succeeds the folder exists
+            # and is readable.  We deliberately skip webdav_client.check()
+            # because many NAS WebDAV servers (Synology, QNAP, etc.) return
+            # false negatives for check() even though the folder is perfectly
+            # accessible.
             files = self.processor.webdav_client.list(folder_path)
+            status["exists"] = True
             status["readable"] = True
-            status["file_count"] = len(files)
+            status["file_count"] = len(files) if files else 0
 
         except WebDavException as e:
             status["error"] = f"WebDAV error: {e}"
