@@ -70,10 +70,10 @@ Edit `.env` and configure your NFS server settings:
 
 ```bash
 # NFS server IP or hostname
-NFS_SERVER=nfs.pitzl.net
+NFS_SERVER=<your-nfs-server>
 
 # Export path on the NFS server
-NFS_EXPORT_PATH=/volume1/webdav/pdf-processor
+NFS_EXPORT_PATH=/volume1/pdf-processor
 
 # Subdirectories inside the export (defaults shown)
 # NFS_INCOMING_SUBDIR=/incoming
