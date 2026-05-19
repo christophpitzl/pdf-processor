@@ -1,10 +1,11 @@
 FROM python:3.11-alpine
 
-# Install system dependencies
+# Install system dependencies (nfs-utils for NFS mount support)
 RUN apk add --no-cache \
     poppler-utils \
     tesseract-ocr \
     curl \
+    nfs-utils \
     && rm -rf /var/cache/apk/*
 
 # Set working directory

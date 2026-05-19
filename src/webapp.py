@@ -7,11 +7,9 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
-from webdav3.exceptions import WebDavException
-
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify
 from loguru import logger
 import httpx
 
@@ -20,26 +18,29 @@ from src.main import PDFProcessor
 
 class WebApp:
     """Flask web application for PDF Processor."""
-    
+
     def __init__(self, processor: PDFProcessor):
         """Initialize web app with processor instance."""
         self.processor = processor
-        self.app = Flask(__name__, template_folder=str(Path(__file__).parent / 'templates'))
+        self.app = Flask(
+            __name__,
+            template_folder=str(Path(__file__).parent / "templates"),
+        )
         self._setup_routes()
         self._processing = False
         self._processing_thread: Optional[threading.Thread] = None
-        
+
     def _setup_routes(self):
         """Setup Flask routes."""
-        self.app.route('/')(self.index)
-        self.app.route('/api/status')(self.api_status)
-        self.app.route('/api/process', methods=['POST'])(self.api_process)
-        self.app.route('/api/diagnostics')(self.api_diagnostics)
-        
+        self.app.route("/")(self.index)
+        self.app.route("/api/status")(self.api_status)
+        self.app.route("/api/process", methods=["POST"])(self.api_process)
+        self.app.route("/api/diagnostics")(self.api_diagnostics)
+
     def index(self):
         """Render main page."""
-        return render_template('index.html')
-    
+        return render_template("index.html")
+
     def api_status(self):
         """Return current status as JSON."""
         try:
@@ -48,55 +49,80 @@ class WebApp:
         except Exception as e:
             logger.error(f"Error getting status: {e}")
             return jsonify({"error": str(e)}), 500
-    
+
     def api_process(self):
         """Trigger manual processing."""
         if self._processing:
-            return jsonify({"status": "already_running", "message": "Processing already in progress"}), 409
-        
+            return (
+                jsonify(
+                    {
+                        "status": "already_running",
+                        "message": "Processing already in progress",
+                    }
+                ),
+                409,
+            )
+
         # Start processing in background thread
         self._processing_thread = threading.Thread(target=self._process_until_empty)
         self._processing_thread.daemon = True
         self._processing_thread.start()
-        
+
         return jsonify({"status": "started", "message": "Processing started"})
-    
+
     def _process_until_empty(self):
         """Process files until input folder is empty."""
         self._processing = True
         try:
             logger.info("Manual processing started")
             while True:
-                # Check if there are files to process
-                if not self.processor.webdav_client:
-                    logger.error("WebDAV client not initialized")
+                watch_dir = self.processor.watch_dir.resolve()
+                if not watch_dir.exists():
+                    logger.error("NFS watch directory does not exist: " f"{watch_dir}")
                     break
-                
-                files = self.processor.webdav_client.list(self.processor.watch_folder)
-                # webdavclient3 list() returns a list of strings (filenames) or None
-                if files is None:
-                    pdf_files = []
-                else:
-                    pdf_files = [
-                        f for f in files 
-                        if isinstance(f, str) and f.endswith('.pdf')
-                    ]
-                
+
+                pdf_files: List[Path] = sorted(
+                    [
+                        f
+                        for f in watch_dir.iterdir()
+                        if f.is_file() and f.suffix.lower() == ".pdf"
+                    ],
+                    key=lambda p: p.stat().st_mtime,
+                )
+
                 if not pdf_files:
                     logger.info("Input folder is empty, stopping manual processing")
                     break
-                
-                logger.info(f"Found {len(pdf_files)} files to process")
+
+                logger.info(f"Found {len(pdf_files)} file(s) to process")
                 self.processor.check_for_new_files()
-                
-                # Small delay to avoid tight loop
+
                 time.sleep(1)
         except Exception as e:
             logger.error(f"Error in manual processing: {e}")
         finally:
             self._processing = False
             logger.info("Manual processing finished")
-    
+
+    def _count_pdfs(self, directory: Path) -> int:
+        """Count PDF files in a directory (flat, non-recursive).
+
+        Returns -1 if the directory cannot be accessed.
+        """
+        try:
+            if not directory.exists():
+                return 0
+            return len(
+                [
+                    f
+                    for f in directory.iterdir()
+                    if f.is_file() and f.suffix.lower() == ".pdf"
+                ]
+            )
+        except Exception as e:
+            logger.debug(f"Could not list directory {directory}: {e}")
+            return -1
+
     def _get_status(self) -> Dict[str, Any]:
         """Get current processing status."""
         status = {
@@ -106,103 +132,95 @@ class WebApp:
             "check_interval": self.processor.check_interval,
             "folders": self._check_folders(),
         }
-        
-        try:
-            if self.processor.webdav_client:
-                # Count input files
-                files = self.processor.webdav_client.list(self.processor.watch_folder)
-                # webdavclient3 list() returns a list of strings (filenames) or None
-                if files is None:
-                    pdf_files = []
-                else:
-                    pdf_files = [
-                        f for f in files 
-                        if isinstance(f, str) and f.endswith('.pdf')
-                    ]
-                status["input_count"] = len(pdf_files)
-                
-                # Count output files
-                is_error = False
-                try:
-                    output_files = self.processor.webdav_client.list(self.processor.output_folder)
-                except Exception as e:
-                    logger.debug(f"Could not list output folder '{self.processor.output_folder}': {e}")
-                    is_error = True
-                    output_files = None
-                    status["output_folder_error"] = str(e)
 
-                if output_files is None:
-                    output_pdfs = []
-                else:
-                    output_pdfs = [
-                        f for f in output_files 
-                        if isinstance(f, str) and f.endswith('.pdf')
-                    ]
-                status["output_count"] = -1 if is_error else len(output_pdfs)
-        except Exception as e:
-            logger.error(f"Error getting status: {e}")
-        
+        input_dir = self.processor.watch_dir.resolve()
+        output_dir = self.processor.output_dir.resolve()
+
+        status["input_count"] = self._count_pdfs(input_dir)
+
+        is_error = False
+        out_count = self._count_pdfs(output_dir)
+        if out_count < 0:
+            is_error = True
+            status["output_folder_error"] = (
+                f"Error listing output directory: {output_dir}"
+            )
+        status["output_count"] = -1 if is_error else out_count
+
         return status
 
     def _check_folders(self) -> Dict[str, Any]:
         """Check status of input/output folders.
 
         Returns:
-            Dictionary with folder status information including existence,
-            readability, and file counts.
+            Dictionary with folder status information.
         """
         folders_status = {
             "data_dir": self._check_local_folder(self.processor.data_dir, "local"),
             "logs_dir": self._check_local_folder(self.processor.logs_dir, "local"),
-            "watch_folder": self._check_webdav_folder(self.processor.watch_folder, "webdav"),
-            "output_folder": self._check_webdav_folder(self.processor.output_folder, "webdav"),
+            "watch_dir": self._check_local_folder(str(self.processor.watch_dir), "nfs"),
+            "output_dir": self._check_local_folder(
+                str(self.processor.output_dir), "nfs"
+            ),
         }
         return folders_status
 
     def _check_local_folder(self, path_str: str, folder_type: str) -> Dict[str, Any]:
-        """Check a local filesystem folder.
+        """Check a local/NFS filesystem folder.
 
         Args:
             path_str: Path to the folder.
-            folder_type: Type label for logging (e.g., "local").
+            folder_type: Type label ("local" or "nfs").
 
         Returns:
             Dictionary with status information.
         """
         path = Path(path_str)
-        status = {
+        status: Dict[str, Any] = {
             "path": str(path),
             "type": folder_type,
             "exists": False,
             "is_directory": False,
             "readable": False,
             "writable": False,
+            "file_count": 0,
             "error": None,
         }
 
         try:
             if not path.exists():
                 status["error"] = "Folder does not exist"
-                logger.warning(f"Local folder does not exist: {path}")
+                if folder_type == "nfs":
+                    status["hint"] = (
+                        "Make sure the NFS share is mounted at this path. "
+                        "Run 'mount | grep nfs' to check."
+                    )
+                logger.warning(f"Folder does not exist: {path}")
                 return status
 
             status["exists"] = True
 
             if not path.is_dir():
                 status["error"] = "Path exists but is not a directory"
-                logger.error(f"Local path is not a directory: {path}")
+                logger.error(f"Path is not a directory: {path}")
                 return status
 
             status["is_directory"] = True
+
+            # Count items
+            try:
+                items = list(path.iterdir())
+                status["file_count"] = len(items)
+            except Exception:
+                status["file_count"] = -1
 
             # Check readability
             if os.access(str(path), os.R_OK):
                 status["readable"] = True
             else:
                 status["error"] = "Folder is not readable"
-                logger.error(f"Local folder not readable: {path}")
 
-            # Actual write test — create a temp file, write, then delete
+            # Write test
             try:
                 test_file = path / ".write_test_tmp"
                 test_file.write_text("ok")
@@ -210,88 +228,16 @@ class WebApp:
                 status["writable"] = True
             except Exception as we:
                 status["writable"] = False
-                status["error"] = status.get("error") or f"Write test failed: {we}"
-                logger.error(f"Local folder write test failed for {path}: {we}")
+                msg = f"Write test failed: {we}"
+                status["error"] = status.get("error") or msg
+                logger.debug(f"Write test failed for {path}: {we}")
 
         except PermissionError:
             status["error"] = "Permission denied"
-            logger.error(f"Permission denied accessing local folder: {path}")
+            logger.error(f"Permission denied accessing folder: {path}")
         except Exception as e:
             status["error"] = str(e)
-            logger.error(f"Error checking local folder {path}: {e}")
-
-        return status
-
-    def _check_webdav_folder(self, folder_path: str, folder_type: str) -> Dict[str, Any]:
-        """Check a WebDAV folder.
-
-        Args:
-            folder_path: WebDAV folder path.
-            folder_type: Type label for logging (e.g., "webdav").
-
-        Returns:
-            Dictionary with status information.
-        """
-        status = {
-            "path": folder_path,
-            "type": folder_type,
-            "exists": False,
-            "readable": False,
-            "writable": False,
-            "file_count": 0,
-            "error": None,
-        }
-
-        if not self.processor.webdav_client:
-            status["error"] = "WebDAV client not initialized"
-            logger.error("Cannot check WebDAV folder: client not initialized")
-            return status
-
-        try:
-            # Try to list contents — if it succeeds the folder exists
-            # and is readable.  We deliberately skip webdav_client.check()
-            # because many NAS WebDAV servers (Synology, QNAP, etc.) return
-            # false negatives for check() even though the folder is perfectly
-            # accessible.
-            files = self.processor.webdav_client.list(folder_path)
-            status["exists"] = True
-            status["readable"] = True
-            status["file_count"] = len(files) if files else 0
-
-            # Actual write test — upload a tiny temp file, then delete it
-            try:
-                import tempfile
-                test_local = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
-                test_local.write(b"ok")
-                test_local.close()
-                test_remote = folder_path.rstrip("/") + "/.write_test_tmp"
-                self.processor.webdav_client.upload_sync(
-                    remote_path=test_remote,
-                    local_path=test_local.name,
-                )
-                self.processor.webdav_client.clean(test_remote)
-                os.unlink(test_local.name)
-                status["writable"] = True
-            except Exception as we:
-                status["writable"] = False
-                status["error"] = status.get("error") or f"Write test failed: {we}"
-                logger.debug(f"WebDAV write test failed for {folder_path}: {we}")
-
-        except WebDavException as e:
-            status["error"] = f"WebDAV error: {e}"
-            status["hint"] = (
-                "The configured folder path may be wrong. "
-                "Check the WebDAV tree (above) for the correct folder names. "
-                "Folders are relative to WEBDAV_URL."
-            )
-            logger.error(f"WebDAV error checking folder {folder_path}: {e}")
-        except Exception as e:
-            status["error"] = str(e)
-            status["hint"] = (
-                "The configured folder path may be wrong. "
-                "Check the WebDAV tree (above) for the correct folder names."
-            )
-            logger.error(f"Error checking WebDAV folder {folder_path}: {e}")
+            logger.error(f"Error checking folder {path}: {e}")
 
         return status
 
@@ -308,7 +254,7 @@ class WebApp:
         """Run all diagnostic checks and return structured results."""
         diagnostics = {
             "ollama": self._diagnose_ollama(),
-            "webdav": self._diagnose_webdav(),
+            "nfs": self._diagnose_nfs(),
             "folders": self._check_folders(),
             "configuration": self._diagnose_configuration(),
         }
@@ -316,7 +262,7 @@ class WebApp:
 
     def _diagnose_ollama(self) -> Dict[str, Any]:
         """Check Ollama connectivity and model availability."""
-        result = {
+        result: Dict[str, Any] = {
             "base_url": self.processor.ollama_base_url,
             "model": self.processor.ollama_model,
             "reachable": False,
@@ -333,8 +279,6 @@ class WebApp:
                 models = r.json().get("models", [])
                 available_models = [m["name"] for m in models]
                 result["available_models"] = available_models
-                # Check if configured model is in the list (Ollama may return
-                # tags like "granite4.1:3b" or "granite4.1:3b (some variant)")
                 configured = self.processor.ollama_model
                 result["model_available"] = any(
                     configured in m for m in available_models
@@ -349,91 +293,70 @@ class WebApp:
             result["error"] = str(e)
         return result
 
-    def _diagnose_webdav(self) -> Dict[str, Any]:
-        """Check WebDAV connectivity and folder accessibility."""
-        result = {
-            "url": self.processor.webdav_url,
-            "connected": False,
+    def _diagnose_nfs(self) -> Dict[str, Any]:
+        """Check NFS mount accessibility and directory contents."""
+        result: Dict[str, Any] = {
+            "watch_dir": str(self.processor.watch_dir),
+            "output_dir": str(self.processor.output_dir),
+            "watch_exists": False,
+            "output_exists": False,
+            "is_mounted": False,
             "error": None,
         }
-        if not self.processor.webdav_client:
-            result["error"] = "WebDAV client not initialized"
-            return result
 
+        watch = self.processor.watch_dir.resolve()
+        output = self.processor.output_dir.resolve()
+
+        result["watch_exists"] = watch.exists()
+        result["output_exists"] = output.exists()
+
+        # Check if the path is on an NFS mount
         try:
-            # Quick connectivity probe: try to list root
-            root_list = self.processor.webdav_client.list("/")
-            result["connected"] = True
-
-            # webdavclient3 list() may include the root collection itself as
-            # the first entry (since PROPFIND depth=1 returns the queried
-            # collection).  Filter it out so users only see actual children.
-            raw_items = [str(f) for f in root_list] if root_list else []
-
-            # The self-reference is the last path segment of the WebDAV URL
-            root_name = self.processor.webdav_url.rstrip("/").rsplit("/", 1)[-1]
-            children = [
-                item for item in raw_items
-                if item.rstrip("/") != root_name
-            ]
-
-            result["root_contents"] = children  # filtered — actual children only
-            result["root_self_reference"] = root_name  # what we filtered out
-
-            # Build a hierarchical tree for a clear view of the folder structure
-            tree = {}
-            for child in children:
-                name = child.rstrip("/")
-                if child.endswith("/"):  # directory
-                    tree[name] = self._list_webdav_tree(name, depth=2)
-                else:
-                    tree[name] = None  # file
-            result["tree"] = tree
-
-        except WebDavException as e:
-            result["error"] = f"WebDAV error: {e}"
+            result["watch_fs_type"] = self._get_fs_type(watch)
+            result["output_fs_type"] = self._get_fs_type(output)
+            result["is_mounted"] = (
+                result["watch_fs_type"] == "nfs" or result["output_fs_type"] == "nfs"
+            )
         except Exception as e:
-            result["error"] = str(e)
+            result["fs_check_error"] = str(e)
+
+        # List contents if they exist
+        if watch.exists():
+            try:
+                children = sorted([p.name for p in watch.iterdir()])
+                result["watch_contents"] = children
+            except Exception as e:
+                result["watch_list_error"] = str(e)
+
+        if output.exists():
+            try:
+                children = sorted([p.name for p in output.iterdir()])
+                result["output_contents"] = children
+            except Exception as e:
+                result["output_list_error"] = str(e)
+
         return result
 
-    def _list_webdav_tree(self, folder_name: str, depth: int = 2) -> Any:
-        """Recursively list a WebDAV subdirectory for the tree view.
+    def _get_fs_type(self, path: Path) -> str:
+        """Determine filesystem type for a given path using ``stat -f``.
 
-        Args:
-            folder_name: Basename of the directory (as returned by list()).
-            depth: Max recursion depth (1 = flat, 2 = one level deep, etc.)
-
-        Returns:
-            A dict mapping names to sub-trees (dirs) or None (files),
-            or a sentinel dict when depth is exceeded.
+        Returns a string like ``"nfs"``, ``"ext4"``, ``"xfs"``, etc.
+        Falls back to ``"unknown"`` on failure.
         """
-        if depth <= 0:
-            return {"__depth_limit__": True}
-
-        if not self.processor.webdav_client:
-            return {"__error__": "no client"}
-
         try:
-            items = self.processor.webdav_client.list(f"/{folder_name}")
+            import subprocess
+
+            result = subprocess.run(
+                ["stat", "-f", "-c", "%T", str(path)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                return result.stdout.strip().lower()
         except Exception:
-            return {"__error__": "cannot list"}
-
-        if not items:
-            return {"__empty__": True}
-
-        result = {}
-        for item in items:
-            name = str(item)
-            clean = name.rstrip("/")
-            # Skip self-reference (the directory itself returned by PROPFIND)
-            if clean == folder_name.rstrip("/"):
-                continue
-            if name.endswith("/"):  # directory
-                sub_path = f"{folder_name}/{clean}"
-                result[clean] = self._list_webdav_tree(sub_path, depth - 1)
-            else:
-                result[clean] = None  # file
-        return result
+            pass
+        return "unknown"
 
     def _diagnose_configuration(self) -> Dict[str, Any]:
         """Return sanitised configuration values for debugging."""
@@ -442,9 +365,11 @@ class WebApp:
             "ollama_base_url": s.ollama_base_url,
             "ollama_model": s.ollama_model,
             "ollama_wol_enabled": s.ollama_wol_enabled,
-            "webdav_url": s.webdav_url,
-            "webdav_watch_folder": s.webdav_watch_folder,
-            "webdav_output_folder": s.webdav_output_folder,
+            "nfs_watch_dir": s.nfs_watch_dir,
+            "nfs_output_dir": s.nfs_output_dir,
+            "nfs_server": s.nfs_server,
+            "nfs_export_path": s.nfs_export_path,
+            "nfs_mount_options": s.nfs_mount_options,
             "check_interval": s.check_interval,
             "scan_date_format": s.scan_date_format,
             "min_confidence": s.min_confidence,
@@ -454,12 +379,6 @@ class WebApp:
             "web_host": s.web_host,
             "web_port": s.web_port,
             "log_level": s.log_level,
-            "ollama_username_configured": (
-                s.webdav_username is not None
-            ),
-            "ollama_password_configured": (
-                s.webdav_password is not None
-            ),
         }
 
     def run(self, host=None, port=None, debug=False):

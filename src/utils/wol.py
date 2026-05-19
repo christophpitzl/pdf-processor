@@ -7,7 +7,6 @@ to become available after wake-up.
 
 import socket
 import time
-from typing import Optional
 
 import httpx
 from loguru import logger
@@ -44,9 +43,7 @@ def wake_on_lan(
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.sendto(header, (host, port))
         sock.close()
-        logger.info(
-            f"Sent WOL magic packet to {mac_address} via {host}:{port}"
-        )
+        logger.info(f"Sent WOL magic packet to {mac_address} via {host}:{port}")
         return True
     except Exception as e:
         logger.error(f"Failed to send WOL magic packet: {e}")
@@ -74,15 +71,12 @@ def wait_for_ollama(
         True if the Ollama server became available, False otherwise.
     """
     logger.info(
-        f"Waiting for Ollama server at {ollama_base_url} "
-        f"(model: {ollama_model})..."
+        f"Waiting for Ollama server at {ollama_base_url} " f"(model: {ollama_model})..."
     )
 
     for attempt in range(1, max_retries + 1):
         try:
-            with httpx.Client(
-                timeout=httpx.Timeout(5.0, connect=2.0)
-            ) as client:
+            with httpx.Client(timeout=httpx.Timeout(5.0, connect=2.0)) as client:
                 response = client.post(
                     f"{ollama_base_url}/api/show",
                     json={"name": ollama_model},

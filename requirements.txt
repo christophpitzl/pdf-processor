@@ -1,8 +1,5 @@
 # PDF Processor Dependencies
 
-# WebDAV client
-webdavclient3>=2.11.0
-
 # PDF processing
 PyPDF2>=3.0.0
 pdfplumber>=0.9.0

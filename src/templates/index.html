@@ -420,17 +420,23 @@
         function renderDiagnostics(data) {
             let html = '<div class="diag-grid">';
 
-            // WebDAV card
-            const wd = data.webdav || {};
-            const wdOk = wd.connected === true;
+            // NFS card
+            const nfs = data.nfs || {};
+            const nfsWatchOk = nfs.watch_exists === true;
+            const nfsOutputOk = nfs.output_exists === true;
+            const nfsAnyOk = nfsWatchOk || nfsOutputOk;
             html += `<div class="diag-card">
-                <h3>🌐 WebDAV <span class="badge ${wdOk ? 'ok' : 'err'}">${wdOk ? 'OK' : 'FAIL'}</span></h3>
-                <div class="config-item"><strong>URL:</strong> ${escHtml(wd.url || '?')}</div>
-                <div class="config-item ${wdOk ? 'ok' : 'err'}"><strong>Connected:</strong> ${wd.connected !== undefined ? wd.connected : '?'}</div>
-                ${wd.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(wd.error)}</div>` : ''}
-                ${wd.root_contents ? `<div class="config-item"><strong>Root items:</strong> ${wd.root_contents.length}</div><pre>${escHtml(wd.root_contents.join('\n'))}</pre>` : ''}
-                ${wd.root_self_reference ? `<div class="config-item warn"><strong>ℹ️ Self-reference filtered:</strong> "${escHtml(wd.root_self_reference)}/" (standard WebDAV behavior — not an error)</div>` : ''}
-                ${wd.tree ? renderWebdavTree(wd.tree) : ''}
+                <h3>📁 NFS Mount <span class="badge ${nfsAnyOk ? 'ok' : 'err'}">${nfsAnyOk ? 'OK' : 'FAIL'}</span></h3>
+                <div class="config-item"><strong>Watch dir:</strong> ${escHtml(nfs.watch_dir || '?')}</div>
+                <div class="config-item"><strong>Output dir:</strong> ${escHtml(nfs.output_dir || '?')}</div>
+                <div class="config-item ${nfsWatchOk ? 'ok' : 'err'}"><strong>Watch exists:</strong> ${nfs.watch_exists !== undefined ? nfs.watch_exists : '?'}</div>
+                <div class="config-item ${nfsOutputOk ? 'ok' : 'err'}"><strong>Output exists:</strong> ${nfs.output_exists !== undefined ? nfs.output_exists : '?'}</div>
+                <div class="config-item ${nfs.is_mounted ? 'ok' : nfs.is_mounted === false ? 'warn' : ''}"><strong>Is NFS mount:</strong> ${nfs.is_mounted !== undefined ? nfs.is_mounted : '?'}</div>
+                ${nfs.watch_fs_type ? `<div class="config-item"><strong>Watch FS type:</strong> ${escHtml(nfs.watch_fs_type)}</div>` : ''}
+                ${nfs.output_fs_type ? `<div class="config-item"><strong>Output FS type:</strong> ${escHtml(nfs.output_fs_type)}</div>` : ''}
+                ${nfs.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(nfs.error)}</div>` : ''}
+                ${nfs.watch_contents ? `<div class="config-item"><strong>Watch contents:</strong></div><pre>${escHtml(nfs.watch_contents.join('\n'))}</pre>` : ''}
+                ${nfs.output_contents ? `<div class="config-item"><strong>Output contents:</strong></div><pre>${escHtml(nfs.output_contents.join('\n'))}</pre>` : ''}
             </div>`;
 
             // Ollama card
@@ -455,8 +461,7 @@
                 folderRows += `<div class="config-item ${fOk ? 'ok' : 'err'}">${icon} <strong>${key}:</strong> ${escHtml(f.path || '')}`;
                 if (f.error) folderRows += `<br><span class="err">❌ ${escHtml(f.error)}</span>`;
                 if (f.hint) folderRows += `<br><span class="warn"><small>💡 ${escHtml(f.hint)}</small></span>`;
-                if (f.type === 'local') folderRows += ` (read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
-                if (f.type === 'webdav') folderRows += ` (${f.file_count} files, write:${f.writable ? '✅' : '❌'})`;
+                if (f.type === 'local' || f.type === 'nfs') folderRows += ` (${f.file_count} items, read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
                 folderRows += '</div>';
             }
             html += `<div class="diag-card">
@@ -476,26 +481,6 @@
                 ${cfgRows}
             </div>`;
 
-            html += '</div>';
-            return html;
-        }
-
-        function renderWebdavTree(tree, indent) {
-            indent = indent || '';
-            let html = '<div class="config-item"><strong>📂 Folder structure:</strong></div><div style="font-family: monospace; font-size: 0.85rem; margin-left: 8px;">';
-            for (const [name, content] of Object.entries(tree)) {
-                if (name.startsWith('__')) continue; // skip sentinels
-                if (content === null) {
-                    html += indent + '📄 ' + escHtml(name) + '\n';
-                } else if (content.__error__) {
-                    html += indent + '📁 ' + escHtml(name) + '/ ❌ ' + escHtml(content.__error__) + '\n';
-                } else if (content.__empty__) {
-                    html += indent + '📁 ' + escHtml(name) + '/ (empty)\n';
-                } else {
-                    html += indent + '📁 ' + escHtml(name) + '/\n';
-                    html += renderWebdavTree(content, indent + '  ');
-                }
-            }
             html += '</div>';
             return html;
         }

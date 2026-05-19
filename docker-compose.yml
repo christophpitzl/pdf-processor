@@ -19,6 +19,13 @@
 # TESTING: Use 'main' tag to get latest main branch builds
 #
 # To build locally instead, replace 'image:' with 'build: .'
+#
+# NFS MOUNT REQUIREMENT:
+# The NFS share must be mounted on the host first. The container mounts the
+# host's NFS mount point to make scanned PDFs available for processing.
+# On the Docker host, add an entry to /etc/fstab like:
+#   <nfs-server>:/export/path  /mnt/nfs  nfs  hard,intr,noatime  0  0
+# Then run: sudo mount /mnt/nfs
 
 services:
   pdf-processor:
@@ -31,29 +38,40 @@ services:
     container_name: pdf-processor
     restart: unless-stopped
     environment:
-       - WEBDAV_URL=${WEBDAV_URL:-http://nas.local/webdav}
-       - WEBDAV_USERNAME=${WEBDAV_USERNAME}
-       - WEBDAV_PASSWORD=${WEBDAV_PASSWORD}
-       - WEBDAV_WATCH_FOLDER=${WEBDAV_WATCH_FOLDER:-/incoming}
-       - WEBDAV_OUTPUT_FOLDER=${WEBDAV_OUTPUT_FOLDER:-/processed}
+      # NFS directories (must match host mount points)
+      - NFS_WATCH_DIR=${NFS_WATCH_DIR:-/mnt/nfs/incoming}
+      - NFS_OUTPUT_DIR=${NFS_OUTPUT_DIR:-/mnt/nfs/processed}
+      # NFS mount metadata (for diagnostics)
+      - NFS_SERVER=${NFS_SERVER}
+      - NFS_EXPORT_PATH=${NFS_EXPORT_PATH}
+      - NFS_MOUNT_OPTIONS=${NFS_MOUNT_OPTIONS:-hard,intr,noatime}
+      # Ollama
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama.pitzl.net:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-granite4.1:3b}
-       - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
-       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
-       - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}
-       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
-       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-       - OLLAMA_WOL_ENABLED=${OLLAMA_WOL_ENABLED:-false}
-       - OLLAMA_MAC_ADDRESS=${OLLAMA_MAC_ADDRESS}
-       - OLLAMA_BROADCAST_HOST=${OLLAMA_BROADCAST_HOST:-[IP_ADDRESS]}
-       - OLLAMA_WOL_PORT=${OLLAMA_WOL_PORT:-9}
-       - OLLAMA_WOL_RETRIES=${OLLAMA_WOL_RETRIES:-10}
-       - OLLAMA_WOL_RETRY_DELAY=${OLLAMA_WOL_RETRY_DELAY:-5.0}
-       - WEB_HOST=${WEB_HOST:-[IP_ADDRESS]}
-       - DATA_DIR=${DATA_DIR:-./data}
-       - LOGS_DIR=${LOGS_DIR:-./logs}
+      # Processing
+      - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
+      - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
+      - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}
+      - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # WOL
+      - OLLAMA_WOL_ENABLED=${OLLAMA_WOL_ENABLED:-false}
+      - OLLAMA_MAC_ADDRESS=${OLLAMA_MAC_ADDRESS}
+      - OLLAMA_BROADCAST_HOST=${OLLAMA_BROADCAST_HOST:-[IP_ADDRESS]}
+      - OLLAMA_WOL_PORT=${OLLAMA_WOL_PORT:-9}
+      - OLLAMA_WOL_RETRIES=${OLLAMA_WOL_RETRIES:-10}
+      - OLLAMA_WOL_RETRY_DELAY=${OLLAMA_WOL_RETRY_DELAY:-5.0}
+      # Web server
+      - WEB_HOST=${WEB_HOST:-[IP_ADDRESS]}
+      - WEB_PORT=${WEB_PORT:-8080}
+      # Internal paths
+      - DATA_DIR=${DATA_DIR:-./data}
+      - LOGS_DIR=${LOGS_DIR:-./logs}
     volumes:
-       - ${DATA_DIR:-./data}:/app/data
-       - ${LOGS_DIR:-./logs}:/app/logs
+      # Mount NFS share from host into container
+      - ${NFS_HOST_MOUNT:-/mnt/nfs}:/mnt/nfs
+      # Local data/logs
+      - ${DATA_DIR:-./data}:/app/data
+      - ${LOGS_DIR:-./logs}:/app/logs
     ports:
-       - "${WEB_PORT:-8080}:8080"
+      - "${WEB_PORT:-8080}:8080"

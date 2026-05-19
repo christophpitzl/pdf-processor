@@ -1,6 +1,7 @@
 """
 PDF Processor - Main Application
-Monitors WebDAV folder, processes PDF files with local AI (Ollama), and renames them based on content.
+Monitors NFS-mounted folder, processes PDF files with local AI (Ollama),
+and renames them based on content.
 """
 
 import os
@@ -8,23 +9,13 @@ import re
 import time
 import hashlib
 import json
+import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
+
 from loguru import logger
 from dotenv import load_dotenv
-import urllib3
-from urllib3.exceptions import InsecureRequestWarning
-
-# Load environment variables
-load_dotenv()
-
-# Suppress InsecureRequestWarning for WebDAV with self-signed certs
-urllib3.disable_warnings(InsecureRequestWarning)
-
-# WebDAV client
-from webdav3.client import Client
-from webdav3.exceptions import WebDavException
 
 # PDF processing
 from PyPDF2 import PdfReader
@@ -39,9 +30,12 @@ from src.utils.wol import wake_on_lan, wait_for_ollama
 # Centralized configuration
 from src.config import Settings
 
+# Load environment variables
+load_dotenv()
+
 
 class PDFProcessor:
-    """Main class for processing PDF files from WebDAV."""
+    """Main class for processing PDF files from an NFS-mounted directory."""
 
     def __init__(self, settings: Optional[Settings] = None):
         """Initialize the PDF processor with configuration.
@@ -53,11 +47,8 @@ class PDFProcessor:
         self.settings = settings if settings is not None else Settings.from_env()
         s = self.settings  # short alias for convenience
 
-        self.webdav_url = s.webdav_url
-        self.webdav_username = s.webdav_username
-        self.webdav_password = s.webdav_password
-        self.watch_folder = s.webdav_watch_folder
-        self.output_folder = s.webdav_output_folder
+        self.watch_dir = Path(s.nfs_watch_dir)
+        self.output_dir = Path(s.nfs_output_dir)
         self.ollama_base_url = s.ollama_base_url
         self.ollama_model = s.ollama_model
         self.ollama_mac_address = s.ollama_mac_address
@@ -84,26 +75,20 @@ class PDFProcessor:
         )
         logger.add(lambda msg: print(msg, end=""), level=self.log_level)
 
-        # Initialize WebDAV client
-        self.webdav_client = self._init_webdav_client()
-
         # Initialize Ollama HTTP client
         self.ollama_client = httpx.Client(
             base_url=self.ollama_base_url,
             timeout=httpx.Timeout(120.0, connect=10.0),
         )
 
-        # Track processed files to avoid duplicates
+        # Track processed files to avoid duplicates (keyed by absolute path)
         self.processed_files: Dict[str, str] = {}
 
         # Validate local directories
-        self._validate_local_directories()
+        self._validate_required_directories()
 
-        # Validate WebDAV connection and folders (non-blocking)
-        try:
-            self._validate_webdav_folders()
-        except Exception as e:
-            logger.warning(f"WebDAV folder validation failed (non-critical): {e}")
+        # Validate NFS directories
+        self._validate_nfs_directories()
 
         # Wake up Ollama server via WOL if enabled
         if self.ollama_wol_enabled and self.ollama_mac_address:
@@ -138,175 +123,98 @@ class PDFProcessor:
                 "Document analysis will fail if Ollama is not running."
             )
 
-    def _init_webdav_client(self) -> Optional[Client]:
-        """Initialize and return WebDAV client."""
-        if not self.webdav_username or not self.webdav_password:
-            logger.error("WebDAV credentials not provided")
-            return None
-
-        options = {
-            "webdav_hostname": self.webdav_url,
-            "webdav_login": self.webdav_username,
-            "webdav_password": self.webdav_password,
-            "webdav_timeout": 60,
-        }
-
-        try:
-            client = Client(options)
-            client.verify = False  # Disable SSL verification for self-signed certs
-            logger.info("WebDAV client initialized")
-            return client
-        except Exception as e:
-            logger.error(f"Failed to initialize WebDAV client: {e}")
-            return None
-
-    def _validate_local_directories(self) -> None:
-        """Validate and create local directories if needed."""
+    def _validate_required_directories(self) -> None:
+        """Validate and create local (non-NFS) directories if needed."""
         data_path = Path(self.data_dir)
         logs_path = Path(self.logs_dir)
 
-        # Check and create data directory
-        try:
-            if not data_path.exists():
-                logger.warning(f"Data directory does not exist: {data_path}")
-                data_path.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Created data directory: {data_path}")
-            elif not data_path.is_dir():
-                logger.error(f"Data path exists but is not a directory: {data_path}")
-            elif not os.access(str(data_path), os.R_OK | os.W_OK):
-                logger.error(f"Data directory is not readable/writable: {data_path}")
-            else:
-                logger.debug(f"Data directory validated: {data_path}")
-        except PermissionError:
-            logger.error(f"Permission denied accessing data directory: {data_path}")
-        except Exception as e:
-            logger.error(f"Error validating data directory {data_path}: {e}")
-
-        # Check and create logs directory
-        try:
-            if not logs_path.exists():
-                logger.warning(f"Logs directory does not exist: {logs_path}")
-                logs_path.mkdir(parents=True, exist_ok=True)
-                logger.info(f"Created logs directory: {logs_path}")
-            elif not logs_path.is_dir():
-                logger.error(f"Logs path exists but is not a directory: {logs_path}")
-            elif not os.access(str(logs_path), os.R_OK | os.W_OK):
-                logger.error(f"Logs directory is not readable/writable: {logs_path}")
-            else:
-                logger.debug(f"Logs directory validated: {logs_path}")
-        except PermissionError:
-            logger.error(f"Permission denied accessing logs directory: {logs_path}")
-        except Exception as e:
-            logger.error(f"Error validating logs directory {logs_path}: {e}")
-
-    def _validate_webdav_folders(self) -> None:
-        """Validate WebDAV connection and check if folders exist and are accessible."""
-        if not self.webdav_client:
-            logger.error("Cannot validate WebDAV folders: client not initialized")
-            return
-
-        # Check watch folder
-        try:
-            logger.info(f"Checking WebDAV watch folder: {self.watch_folder}")
-            folder_exists = self._webdav_folder_exists(self.watch_folder)
-            if folder_exists:
-                # Try to list contents to verify readability
-                try:
-                    files = self.webdav_client.list(self.watch_folder)
-                    logger.info(f"Watch folder accessible: {self.watch_folder} ({len(files)} items)")
-                except WebDavException as list_error:
-                    # 403 or other permission errors on list are non-critical
-                    logger.warning(f"Watch folder exists but listing failed (may be permission): {self.watch_folder} - {list_error}")
-            else:
-                logger.warning(f"Watch folder does not exist on WebDAV: {self.watch_folder}")
-                # Attempt to create it (skip for root)
-                if self.watch_folder.strip("/"):
-                    try:
-                        self.webdav_client.mkdir(self.watch_folder)
-                        logger.info(f"Created watch folder on WebDAV: {self.watch_folder}")
-                    except Exception as e:
-                        logger.error(f"Failed to create watch folder {self.watch_folder}: {e}")
-        except WebDavException as e:
-            logger.warning(f"WebDAV error accessing watch folder {self.watch_folder} (non-critical): {e}")
-        except Exception as e:
-            logger.warning(f"Error validating watch folder {self.watch_folder} (non-critical): {e}")
-
-        # Check output folder
-        try:
-            logger.info(f"Checking WebDAV output folder: {self.output_folder}")
-            folder_exists = self._webdav_folder_exists(self.output_folder)
-            if folder_exists:
-                # Try to list contents to verify readability
-                try:
-                    files = self.webdav_client.list(self.output_folder)
-                    logger.info(f"Output folder accessible: {self.output_folder} ({len(files)} items)")
-                except WebDavException as list_error:
-                    # 403 or other permission errors on list are non-critical
-                    logger.warning(f"Output folder exists but listing failed (may be permission): {self.output_folder} - {list_error}")
-            else:
-                logger.warning(f"Output folder does not exist on WebDAV: {self.output_folder}")
-                if self.output_folder.strip("/"):
-                    try:
-                        self.webdav_client.mkdir(self.output_folder)
-                        logger.info(f"Created output folder on WebDAV: {self.output_folder}")
-                    except Exception as e:
-                        logger.error(f"Failed to create output folder {self.output_folder}: {e}")
-        except WebDavException as e:
-            logger.warning(f"WebDAV error accessing output folder {self.output_folder}: {e}")
-        except Exception as e:
-            logger.warning(f"Error validating output folder {self.output_folder}: {e}")
-
-    def _webdav_folder_exists(self, folder_path: str) -> bool:
-        """Check if a WebDAV folder exists, handling root (``/``) gracefully.
-
-        The root path ``/`` is assumed to always exist — many WebDAV servers
-        deny ``check("/")`` with a 403.  For any other path we delegate to
-        the standard ``check()`` method but also treat 403 responses with a 403
-        (permission denied) as "PROPFIND") as "exists" — the resource is there,
-        we just cannot inspect its metadata.
-        """
-        stripped = folder_path.strip("/")
-        if not stripped:
-            # Root path — assume it always exists
-            return True
-        try:
-            return self.webdav_client.check(folder_path)
-        except WebDavException as e:
-            error_str = str(e).lower()
-            if "403" in error_str or "forbidden" in error_str:
-                logger.warning(
-                    f"WebDAV check for {folder_path} returned 403 — "
-                    "assuming folder exists"
+        for label, path in [("Data", data_path), ("Logs", logs_path)]:
+            try:
+                if not path.exists():
+                    logger.warning(f"{label} directory does not exist: {path}")
+                    path.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"Created {label.lower()} directory: {path}")
+                elif not path.is_dir():
+                    logger.error(f"{label} path exists but is not a directory: {path}")
+                elif not os.access(str(path), os.R_OK | os.W_OK):
+                    logger.error(f"{label} directory is not readable/writable: {path}")
+                else:
+                    logger.debug(f"{label} directory validated: {path}")
+            except PermissionError:
+                logger.error(
+                    f"Permission denied accessing {label.lower()} directory: {path}"
                 )
-                return True
-            raise
+            except Exception as e:
+                logger.error(f"Error validating {label.lower()} directory {path}: {e}")
 
-    def extract_text_from_pdf(self, pdf_path: str) -> str:
-        """Extract text from PDF file using multiple methods."""
-        text = ""
+    def _validate_nfs_directories(self) -> None:
+        """Validate that NFS watch and output directories are accessible."""
+        for label, path in [
+            ("NFS watch", self.watch_dir),
+            ("NFS output", self.output_dir),
+        ]:
+            try:
+                if not path.exists():
+                    logger.warning(
+                        f"{label} directory does not exist: {path}. "
+                        "Make sure the NFS share is mounted."
+                    )
+                    path.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"Created {label.lower()} directory: {path}")
+                    continue
 
-        try:
-            # Method 1: Use pdfplumber for better text extraction
-            with pdfplumber.open(pdf_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
+                if not path.is_dir():
+                    logger.error(f"{label} path exists but is not a directory: {path}")
+                    continue
 
-            # If text extraction failed, try PyPDF2
-            if not text.strip():
-                reader = PdfReader(pdf_path)
-                for page in reader.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
+                if not os.access(str(path), os.R_OK):
+                    logger.error(f"{label} directory is not readable: {path}")
+                    continue
 
-            logger.debug(f"Extracted {len(text)} characters from PDF")
-            return text.strip()
+                if not os.access(str(path), os.W_OK):
+                    logger.warning(
+                        f"{label} directory is not writable: {path}. "
+                        "Processing will fail if files cannot be moved here."
+                    )
+                    continue
 
-        except Exception as e:
-            logger.error(f"Error extracting text from PDF: {e}")
-            return ""
+                logger.info(
+                    f"{label} directory validated: {path} "
+                    f"({len(list(path.iterdir()))} items)"
+                )
+            except PermissionError:
+                logger.error(
+                    f"Permission denied accessing {label.lower()} directory: {path}"
+                )
+            except Exception as e:
+                logger.error(f"Error validating {label.lower()} directory {path}: {e}")
+
+        def extract_text_from_pdf(self, pdf_path: str) -> str:
+            """Extract text from PDF file using multiple methods."""
+            text = ""
+
+            try:
+                # Method 1: Use pdfplumber for better text extraction
+                with pdfplumber.open(pdf_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
+
+                # If text extraction failed, try PyPDF2
+                if not text.strip():
+                    reader = PdfReader(pdf_path)
+                    for page in reader.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
+
+                logger.debug(f"Extracted {len(text)} characters from PDF")
+                return text.strip()
+
+            except Exception as e:
+                logger.error(f"Error extracting text from PDF: {e}")
+                return ""
 
     def check_ollama_connection(self) -> bool:
         """Check if Ollama server is reachable and model is available."""
@@ -319,10 +227,14 @@ class PDFProcessor:
             # Check if our model is available
             model_names = [m.get("name", "") for m in models]
             if self.ollama_model not in model_names:
-                logger.warning(f"Model '{self.ollama_model}' not found in Ollama. Available models: {model_names}")
+                logger.warning(
+                    f"Model '{self.ollama_model}' not found in Ollama. Available models: {model_names}"
+                )
                 return False
 
-            logger.info(f"Ollama connection successful, model '{self.ollama_model}' is available")
+            logger.info(
+                f"Ollama connection successful, model '{self.ollama_model}' is available"
+            )
             return True
         except httpx.RequestError as e:
             logger.error(f"Cannot connect to Ollama at {self.ollama_base_url}: {e}")
@@ -376,12 +288,17 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             logger.debug(f"Ollama full response: {response_data}")
 
             # Extract content from response
-            if "message" not in response_data or "content" not in response_data["message"]:
+            if (
+                "message" not in response_data
+                or "content" not in response_data["message"]
+            ):
                 logger.error(f"Unexpected Ollama response structure: {response_data}")
                 return {}
 
             content = response_data["message"]["content"].strip()
-            logger.debug(f"Extracted content length: {len(content)}, content: {content[:200]}...")
+            logger.debug(
+                f"Extracted content length: {len(content)}, content: {content[:200]}..."
+            )
 
             if not content:
                 logger.error("Ollama returned empty content")
@@ -432,7 +349,9 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             logger.error(f"Error parsing Ollama response: {e}")
             return {}
 
-    def generate_filename(self, analysis: Dict[str, Any], original_filename: str) -> str:
+    def generate_filename(
+        self, analysis: Dict[str, Any], original_filename: str
+    ) -> str:
         """Generate new filename based on analysis and pattern."""
         if not analysis:
             return original_filename
@@ -441,9 +360,11 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
         date_str = ""
         if analysis.get("date"):
             try:
-                date_obj = datetime.fromisoformat(analysis["date"].replace("Z", "+00:00"))
+                date_obj = datetime.fromisoformat(
+                    analysis["date"].replace("Z", "+00:00")
+                )
                 date_str = date_obj.strftime(self.scan_date_format)
-            except:
+            except ValueError:
                 date_str = datetime.now().strftime(self.scan_date_format)
         else:
             date_str = datetime.now().strftime(self.scan_date_format)
@@ -480,24 +401,31 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
         return filename
 
-    def process_pdf(self, file_path: str, original_filename: str) -> bool:
-        """Process a single PDF file."""
+    def process_pdf(self, file_path: Path, original_filename: str) -> bool:
+        """Process a single PDF file from the NFS watch directory.
+
+        Args:
+            file_path: Absolute path to the PDF file.
+            original_filename: The original filename (for logging).
+
+        Returns:
+            True if processing succeeded, False otherwise.
+        """
         logger.info(f"Processing file: {original_filename}")
 
-        if not self.webdav_client:
-            logger.error("WebDAV client not initialized")
-            return False
-
         try:
-            # Download file to local temp directory
-            local_path = os.path.join(self.data_dir, original_filename)
-            self.webdav_client.download_sync(remote_path=file_path, local_path=local_path)
+            # Copy file to local data dir for processing (in case of NFS latency)
+            local_path = Path(self.data_dir) / original_filename
+            shutil.copy2(str(file_path), str(local_path))
 
             # Extract text from PDF
-            text = self.extract_text_from_pdf(local_path)
+            text = self.extract_text_from_pdf(str(local_path))
 
             if not text:
                 logger.warning(f"No text extracted from {original_filename}, skipping")
+                # Clean up local copy
+                if local_path.exists():
+                    local_path.unlink()
                 return False
 
             # Analyze with AI
@@ -505,31 +433,37 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
             if not analysis:
                 logger.warning(f"AI analysis failed for {original_filename}")
+                if local_path.exists():
+                    local_path.unlink()
                 return False
 
             # Check confidence
             if analysis.get("confidence", 0) < self.min_confidence:
-                logger.warning(f"Low confidence ({analysis.get('confidence')}) for {original_filename}")
+                logger.warning(
+                    f"Low confidence ({analysis.get('confidence')}) "
+                    f"for {original_filename}"
+                )
 
             # Generate new filename
             new_filename = self.generate_filename(analysis, original_filename)
 
             logger.info(f"Original: {original_filename} -> New: {new_filename}")
 
-            # Upload to output folder
-            if self.webdav_client:
-                output_path = os.path.join(self.output_folder, new_filename)
-                self.webdav_client.upload_sync(
-                    remote_path=output_path,
-                    local_path=local_path,
-                )
+            # Move processed file to output directory with new name
+            output_path = self.output_dir / new_filename
 
-            # Optionally delete from source folder
-            # self.webdav_client.delete(file_path)
+            # Ensure output directory exists
+            self.output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Remove local file
-            if os.path.exists(local_path):
-                os.remove(local_path)
+            # Copy the processed file to output (with new name)
+            shutil.copy2(str(local_path), str(output_path))
+
+            # Remove original file from watch directory after successful processing
+            file_path.unlink(missing_ok=True)
+
+            # Remove local temp copy
+            if local_path.exists():
+                local_path.unlink()
 
             logger.success(f"Successfully processed {original_filename}")
             return True
@@ -538,85 +472,100 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             logger.error(f"Error processing {original_filename}: {e}")
             return False
 
-    def check_for_new_files(self):
-        """Check WebDAV folder for new files to process."""
-        if not self.webdav_client:
-            logger.error("WebDAV client not initialized")
-            return
-
+    def check_for_new_files(self) -> None:
+        """Check NFS watch directory for new PDF files to process."""
         try:
-            # List files in watch folder
-            files = self.webdav_client.list(self.watch_folder)
+            watch_path = self._resolve_watch_dir()
 
-            # Handle None or empty response (e.g., 403 errors)
-            if files is None:
-                logger.warning(f"Could not list files in {self.watch_folder} (returned None)")
-                return
-            
-            if not isinstance(files, list):
-                logger.warning(f"Unexpected response type from list(): {type(files)}")
+            if not watch_path.exists():
+                logger.warning(
+                    f"Watch directory does not exist: {watch_path}. "
+                    "Make sure the NFS share is mounted."
+                )
                 return
 
-            for filename in files:
-                if isinstance(filename, str) and filename.endswith(".pdf"):
-                    file_path = os.path.join(self.watch_folder, filename)
+            # Gather PDF files (non-recursive, sorted by mtime for FIFO order)
+            pdf_files: List[Path] = sorted(
+                [
+                    f
+                    for f in watch_path.iterdir()
+                    if f.is_file() and f.suffix.lower() == ".pdf"
+                ],
+                key=lambda p: p.stat().st_mtime,
+            )
 
-                    # Check if already processed (using file hash)
-                    file_hash = self._get_file_hash(file_path)
+            if not pdf_files:
+                logger.debug(f"No PDF files found in {watch_path}")
+                return
 
-                    if file_hash and file_hash not in self.processed_files:
-                        self.processed_files[file_hash] = filename
-                        self.process_pdf(file_path, filename)
-                    elif file_hash:
-                        logger.debug(f"File already processed: {filename}")
+            logger.info(f"Found {len(pdf_files)} PDF file(s) to process")
 
-        except WebDavException as e:
-            logger.error(f"WebDAV error checking for files: {e}")
+            for file_path in pdf_files:
+                # Compute hash to check for duplicates
+                file_hash = self._get_file_hash(file_path)
+
+                if file_hash and file_hash not in self.processed_files:
+                    self.processed_files[file_hash] = file_path.name
+                    self.process_pdf(file_path, file_path.name)
+                elif file_hash:
+                    logger.debug(f"File already processed: {file_path.name}")
+
+        except PermissionError:
+            logger.error(
+                f"Permission denied reading NFS watch directory: " f"{self.watch_dir}"
+            )
+        except OSError as e:
+            logger.error(f"NFS I/O error checking for new files: {e}")
         except Exception as e:
             logger.error(f"Error checking for new files: {e}")
 
-    def _get_file_hash(self, file_path: str) -> Optional[str]:
-        """Get MD5 hash of a file."""
-        if not self.webdav_client:
-            logger.error("WebDAV client not initialized")
-            return None
-            
+    def _resolve_watch_dir(self) -> Path:
+        """Resolve the NFS watch directory, following symlinks if needed.
+
+        Returns:
+            The resolved Path.
+        """
         try:
-            # Download file to calculate hash
-            local_path = os.path.join(self.data_dir, "temp_hash.pdf")
-            self.webdav_client.download_sync(remote_path=file_path, local_path=local_path)
+            return self.watch_dir.resolve()
+        except Exception:
+            return self.watch_dir
 
-            with open(local_path, "rb") as f:
-                file_hash = hashlib.md5(f.read()).hexdigest()
+    def _get_file_hash(self, file_path: Path) -> Optional[str]:
+        """Get MD5 hash of a local file.
 
-            os.remove(local_path)
-            return file_hash
+        Args:
+            file_path: Path to the file.
 
+        Returns:
+            MD5 hex digest string, or None on error.
+        """
+        try:
+            return hashlib.md5(file_path.read_bytes()).hexdigest()
         except Exception as e:
-            logger.error(f"Error calculating file hash: {e}")
+            logger.error(f"Error calculating hash for {file_path}: {e}")
             return None
 
-    def run(self, web_mode=False):
+    def run(self, web_mode: bool = False) -> None:
         """Main loop to continuously monitor for new files.
 
         Args:
-            web_mode: If True, only run once and return (for web interface control).
-                     If False, run continuously with check_interval.
-                     If check_interval is 0, monitoring is disabled.
+            web_mode: If True, only run once and return (for web interface
+                      control).  If False, run continuously with
+                      check_interval.  If check_interval is 0, monitoring
+                      is disabled.
         """
         if web_mode:
-            logger.info("Running in web mode - single check")
+            logger.info("Running in web mode — single check")
             self.check_for_new_files()
             return
 
         if self.check_interval == 0:
-            logger.info("Check interval is 0 - automatic monitoring disabled")
+            logger.info("Check interval is 0 — automatic monitoring disabled")
             logger.info("Use the web interface to manually trigger processing")
-            # Keep the process alive but don't process automatically
             while True:
-                time.sleep(3600)  # Sleep for an hour, just to keep process alive
+                time.sleep(3600)
 
-        logger.info(f"Starting PDF processor, checking every {self.check_interval} seconds")
+        logger.info(f"Starting PDF processor, checking every {self.check_interval}s")
 
         while True:
             self.check_for_new_files()
