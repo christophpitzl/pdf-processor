@@ -32,10 +32,11 @@ All processing happens entirely on your local infrastructure — no sensitive do
 
 - Docker and Docker Compose installed
 - An NFS export from your NAS (Synology, QNAP, TrueNAS, etc.)
-- The NFS share mounted on the Docker host
 - [Ollama](https://ollama.com/) installed and running separately on your host or another machine
 - A local LLM model pulled in Ollama (e.g., `granite4.1:3b`, `qwen3.5:0.8b`, `mistral`, `gemma2`)
   - **Note**: `granite4.1:3b` is recommended as it returns clean JSON without markdown code blocks
+
+**No manual NFS mounting required!** The container will automatically mount the NFS share at startup.
 
 ## Quick Start
 
@@ -63,29 +64,23 @@ ollama pull mistral
 
 Ollama will be available at `http://<your-ollama-server>:11434`. Note the IP address or hostname.
 
-### Step 2: Mount the NFS Share on the Docker Host
+### Step 2: Configure NFS Settings
 
-Ensure the NFS export from your NAS is mounted locally. Add an entry to `/etc/fstab`:
-
-```bash
-# /etc/fstab — replace <nfs-server> and <export-path> with your values
-<nfs-server>:/volume1/scans  /mnt/nfs  nfs  hard,intr,noatime  0  0
-```
-
-Then mount it:
+Edit `.env` and configure your NFS server settings:
 
 ```bash
-sudo mkdir -p /mnt/nfs
-sudo mount /mnt/nfs
+# NFS server IP or hostname
+NFS_SERVER=nfs.pitzl.net
+
+# Export path on the NFS server
+NFS_EXPORT_PATH=/volume1/webdav/pdf-processor
+
+# Subdirectories inside the export (defaults shown)
+# NFS_INCOMING_SUBDIR=/incoming
+# NFS_PROCESSED_SUBDIR=/processed
 ```
 
-Create the `incoming` and `processed` subdirectories:
-
-```bash
-sudo mkdir -p /mnt/nfs/incoming /mnt/nfs/processed
-```
-
-Configure your scanning app (e.g., Adobe Scan, CamScanner) to upload PDFs into the `incoming` folder on the NFS share.
+The container will automatically mount the NFS share at startup and derive the internal paths. Configure your scanning app (e.g., Adobe Scan, CamScanner) to upload PDFs into the `incoming` subfolder on the NFS share.
 
 ### Step 3: Configure Environment
 
@@ -97,9 +92,11 @@ cp .env.example .env
 
 Edit `.env` and set at minimum:
 
+- `NFS_SERVER` — IP or hostname of your NFS server
+- `NFS_EXPORT_PATH` — Export path on the NFS server (e.g., `/volume1/webdav/pdf-processor`)
 - `OLLAMA_BASE_URL` — URL of your Ollama server (e.g., `http://ollama.pitzl.net:11434`)
-- `NFS_WATCH_DIR` — Path to the incoming directory (default: `/mnt/nfs/incoming`)
-- `NFS_OUTPUT_DIR` — Path to the processed directory (default: `/mnt/nfs/processed`)
+
+All other variables have built-in defaults. The container will automatically mount the NFS share and derive the internal paths (e.g. `/mnt/nfs/incoming` for input, `/mnt/nfs/processed` for output) from `NFS_INCOMING_SUBDIR` and `NFS_PROCESSED_SUBDIR`.
 
 All other variables have built-in defaults.
 
@@ -117,11 +114,18 @@ The web interface is available at `http://localhost:8080`.
 
 ### NFS Folder Layout
 
+The NFS export is mounted at `/mnt/nfs/` inside the container (auto-mounted at startup).
+The actual input and output subdirectories are derived from your configuration:
+
 ```
-/mnt/nfs/              # NFS mount root (bind-mounted into container)
-├── incoming/          # Drop PDFs here (from scanner apps)
-└── processed/         # Renamed PDFs appear here
+/mnt/nfs/              # NFS mount root (auto-mounted by container)
+├── incoming/          # Drop PDFs here (default, configurable via NFS_INCOMING_SUBDIR)
+└── processed/         # Renamed PDFs appear here (configurable via NFS_PROCESSED_SUBDIR)
 ```
+
+> **💡 Tip:** If your scanning app uploads to a folder called `upload` and you want processed
+> files in `done`, just set `NFS_INCOMING_SUBDIR=/upload` and `NFS_PROCESSED_SUBDIR=/done`.
+> No need to think about container-internal paths!
 
 ### Web Interface
 
@@ -151,12 +155,11 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NFS_WATCH_DIR` | `/mnt/nfs/incoming` | NFS directory to monitor for new PDFs |
-| `NFS_OUTPUT_DIR` | `/mnt/nfs/processed` | NFS directory for renamed PDFs |
-| `NFS_SERVER` | — | NFS server address (diagnostics only) |
-| `NFS_EXPORT_PATH` | — | NFS export path (diagnostics only) |
-| `NFS_MOUNT_OPTIONS` | `hard,intr,noatime` | NFS mount options (diagnostics only) |
-| `NFS_HOST_MOUNT` | `/mnt/nfs` | Host path to bind-mount into the container |
+| `NFS_SERVER` | _(required)_ | NFS server IP or hostname |
+| `NFS_EXPORT_PATH` | _(required)_ | NFS export path on the server (e.g., `/volume1/webdav/pdf-processor`) |
+| `NFS_INCOMING_SUBDIR` | `/incoming` | Subdirectory inside the NFS export for incoming PDFs |
+| `NFS_PROCESSED_SUBDIR` | `/processed` | Subdirectory inside the NFS export for processed PDFs |
+| `NFS_MOUNT_OPTIONS` | `hard,intr,noatime` | NFS mount options |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `granite4.1:3b` | Local model to use for analysis |
 | `OLLAMA_WOL_ENABLED` | `false` | Enable Wake-on-LAN to wake up Ollama server |
@@ -171,11 +174,10 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `CHECK_INTERVAL` | `60` | Seconds between file checks (0 = disable auto-check) |
 | `WEB_HOST` | `0.0.0.0` | Host to bind the web interface to |
 | `WEB_PORT` | `8080` | Port for the web interface |
-| `DATA_DIR` | `./data` | Local directory for temporary file storage |
-| `LOGS_DIR` | `./logs` | Directory for log files |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 > **Note:** All defaults are defined once in `src/config.py`. If you ever need to reset to factory defaults, simply remove the variable from your `.env` file.
+> **Note:** `DATA_DIR` and `LOGS_DIR` have been removed from the user-facing configuration. These are now hardcoded to `/app/data` and `/app/logs` inside the container.
 
 ### Filename Pattern Placeholders
 
@@ -222,21 +224,13 @@ The dashboard shows:
 
 ## Docker Compose
 
-The provided `docker-compose.yml` expects:
+The provided `docker-compose.yml` will:
 
-- NFS share mounted at `/mnt/nfs` on the Docker host
-- Subdirectories `incoming/` and `processed/` inside the mount
+- Automatically mount the NFS share at container startup
+- Create `incoming/` and `processed/` subdirectories as needed
+- Run with elevated privileges (`privileged: true`) to allow NFS mounting
 
-The container bind-mounts the host's NFS mount point, making files directly accessible.
-
-### Custom NFS Host Mount Path
-
-If your NFS share is mounted at a different path on the host, set `NFS_HOST_MOUNT`:
-
-```bash
-# In .env:
-NFS_HOST_MOUNT=/srv/nfs/scans
-```
+No manual NFS mounting on the host is required. Just configure `NFS_SERVER` and `NFS_EXPORT_PATH` in your `.env` file.
 
 ## Local AI Model Selection
 
@@ -415,11 +409,12 @@ See the [packages page](https://github.com/christophpitzl/pdf-processor/pkgs/con
 
 ### Common Issues
 
-**1. NFS Mount Not Available**
-- Verify the NFS share is mounted: `mount | grep nfs`
-- Check `/etc/fstab` for the correct NFS entry
-- Ensure the NFS server is reachable: `showmount -e <nfs-server>`
-- Check container logs: `docker compose logs pdf-processor`
+**1. NFS Mount Fails**
+- Verify `NFS_SERVER` and `NFS_EXPORT_PATH` are set correctly in `.env`
+- Ensure the NFS server is reachable from the container: `docker compose exec pdf-processor ping <nfs-server>`
+- Check container logs for mount errors: `docker compose logs pdf-processor`
+- Verify the container has privileged access (check `docker-compose.yml` has `privileged: true`)
+- Ensure NFS export path exists and is exported on the server: `showmount -e <nfs-server>`
 
 **2. AI Analysis Fails**
 - Verify Ollama is running: `curl http://<ollama-host>:11434/api/tags`

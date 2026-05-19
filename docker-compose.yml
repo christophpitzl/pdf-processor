@@ -20,12 +20,10 @@
 #
 # To build locally instead, replace 'image:' with 'build: .'
 #
-# NFS MOUNT REQUIREMENT:
-# The NFS share must be mounted on the host first. The container mounts the
-# host's NFS mount point to make scanned PDFs available for processing.
-# On the Docker host, add an entry to /etc/fstab like:
-#   <nfs-server>:/export/path  /mnt/nfs  nfs  hard,intr,noatime  0  0
-# Then run: sudo mount /mnt/nfs
+# AUTOMATIC NFS MOUNTING:
+# The container will automatically mount the NFS share at startup.
+# Just provide NFS_SERVER and NFS_EXPORT_PATH in your .env file.
+# No manual NFS mounting on the host is required.
 
 services:
   pdf-processor:
@@ -37,13 +35,20 @@ services:
     # - ghcr.io/christophpitzl/pdf-processor:main     # latest main branch (may be unstable)
     container_name: pdf-processor
     restart: unless-stopped
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    # The container will automatically mount NFS at startup using the
+    # NFS_SERVER and NFS_EXPORT_PATH environment variables.
     environment:
-      # NFS directories (must match host mount points)
-      - NFS_WATCH_DIR=${NFS_WATCH_DIR:-/mnt/nfs/incoming}
-      - NFS_OUTPUT_DIR=${NFS_OUTPUT_DIR:-/mnt/nfs/processed}
-      # NFS mount metadata (for diagnostics)
+      # NFS configuration - container will mount automatically
+      # User only needs to specify the NFS server details
       - NFS_SERVER=${NFS_SERVER}
       - NFS_EXPORT_PATH=${NFS_EXPORT_PATH}
+      # Optional: subdirectory names inside the NFS export
+      - NFS_INCOMING_SUBDIR=${NFS_INCOMING_SUBDIR:-/incoming}
+      - NFS_PROCESSED_SUBDIR=${NFS_PROCESSED_SUBDIR:-/processed}
+      # Optional: NFS mount options
       - NFS_MOUNT_OPTIONS=${NFS_MOUNT_OPTIONS:-hard,intr,noatime}
       # Ollama
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama.pitzl.net:11434}
@@ -64,14 +69,8 @@ services:
       # Web server
       - WEB_HOST=${WEB_HOST:-[IP_ADDRESS]}
       - WEB_PORT=${WEB_PORT:-8080}
-      # Internal paths
-      - DATA_DIR=${DATA_DIR:-./data}
-      - LOGS_DIR=${LOGS_DIR:-./logs}
     volumes:
-      # Mount NFS share from host into container
-      - ${NFS_HOST_MOUNT:-/mnt/nfs}:/mnt/nfs
-      # Local data/logs
-      - ${DATA_DIR:-./data}:/app/data
-      - ${LOGS_DIR:-./logs}:/app/logs
+      # No local volume mounts needed - all data is on NFS
+      # Container uses internal /app/data and /app/logs for temp storage
     ports:
       - "${WEB_PORT:-8080}:8080"

@@ -16,14 +16,26 @@ class Settings:
 
     Create an instance via ``Settings.from_env()`` to load overrides
     from environment variables (and a ``.env`` file if present).
+
+    Internal container paths (``nfs_watch_dir``, ``nfs_output_dir``,
+    ``data_dir``, ``logs_dir``) are **automatically derived** from the
+    user-facing NFS variables — you only need to configure the NFS
+    server details and subdirectory names.
     """
 
-    # ── NFS ─────────────────────────────────────────────────────────────
-    nfs_watch_dir: str = "/mnt/nfs/incoming"
-    nfs_output_dir: str = "/mnt/nfs/processed"
+    # ── NFS (user-facing) ───────────────────────────────────────────────
     nfs_server: Optional[str] = None
     nfs_export_path: Optional[str] = None
+    nfs_incoming_subdir: str = "/incoming"
+    nfs_processed_subdir: str = "/processed"
     nfs_mount_options: str = "hard,intr,noatime"
+
+    # ── NFS (derived internal paths) ────────────────────────────────────
+    # These are computed from the subdir settings above and are not
+    # meant to be overridden directly.  They exist as attributes for
+    # convenient access by the rest of the codebase.
+    nfs_watch_dir: str = "/mnt/nfs/incoming"
+    nfs_output_dir: str = "/mnt/nfs/processed"
 
     # ── Ollama ──────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
@@ -47,14 +59,22 @@ class Settings:
     web_host: str = "0.0.0.0"
     web_port: int = 8080
 
-    # ── Paths ───────────────────────────────────────────────────────────
-    data_dir: str = "./data"
-    logs_dir: str = "./logs"
+    # ── Internal container paths (hardcoded) ────────────────────────────
+    data_dir: str = "/app/data"
+    logs_dir: str = "/app/logs"
 
     # ── Logging ─────────────────────────────────────────────────────────
     log_level: str = "INFO"
 
     # ── Public methods ──────────────────────────────────────────────────
+
+    def __post_init__(self) -> None:
+        """Derive internal NFS mount paths from the user-facing subdirs."""
+        mount_point = "/mnt/nfs"
+        inc = self.nfs_incoming_subdir.strip("/")
+        proc = self.nfs_processed_subdir.strip("/")
+        self.nfs_watch_dir = f"{mount_point}/{inc}"
+        self.nfs_output_dir = f"{mount_point}/{proc}"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -65,11 +85,11 @@ class Settings:
         are silently ignored.
         """
         return cls(
-            # NFS
-            nfs_watch_dir=os.getenv("NFS_WATCH_DIR", "/mnt/nfs/incoming"),
-            nfs_output_dir=os.getenv("NFS_OUTPUT_DIR", "/mnt/nfs/processed"),
+            # NFS (user-facing)
             nfs_server=os.getenv("NFS_SERVER"),
             nfs_export_path=os.getenv("NFS_EXPORT_PATH"),
+            nfs_incoming_subdir=os.getenv("NFS_INCOMING_SUBDIR", "/incoming"),
+            nfs_processed_subdir=os.getenv("NFS_PROCESSED_SUBDIR", "/processed"),
             nfs_mount_options=os.getenv("NFS_MOUNT_OPTIONS", "hard,intr,noatime"),
             # Ollama
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
@@ -92,9 +112,6 @@ class Settings:
             # Web
             web_host=os.getenv("WEB_HOST", "0.0.0.0"),
             web_port=int(os.getenv("WEB_PORT", "8080")),
-            # Paths
-            data_dir=os.getenv("DATA_DIR", "./data"),
-            logs_dir=os.getenv("LOGS_DIR", "./logs"),
             # Logging
             log_level=os.getenv("LOG_LEVEL", "INFO"),
         )

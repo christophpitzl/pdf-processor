@@ -87,6 +87,18 @@ class PDFProcessor:
         # Validate local directories
         self._validate_required_directories()
 
+        # Log NFS mount status
+        if self.settings.nfs_server and self.settings.nfs_export_path:
+            logger.info(
+                f"NFS auto-mount configured: {self.settings.nfs_server}:{self.settings.nfs_export_path}"
+            )
+        else:
+            logger.warning(
+                "NFS_SERVER and/or NFS_EXPORT_PATH not set. "
+                "NFS auto-mount will not be performed. "
+                "Set these environment variables for automatic NFS mounting."
+            )
+
         # Validate NFS directories
         self._validate_nfs_directories()
 
@@ -157,7 +169,7 @@ class PDFProcessor:
                 if not path.exists():
                     logger.warning(
                         f"{label} directory does not exist: {path}. "
-                        "Make sure the NFS share is mounted."
+                        "If NFS auto-mount is configured, it should be created after mount."
                     )
                     path.mkdir(parents=True, exist_ok=True)
                     logger.info(f"Created {label.lower()} directory: {path}")
