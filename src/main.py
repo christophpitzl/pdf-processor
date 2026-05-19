@@ -247,22 +247,34 @@ class PDFProcessor:
                     except Exception as e:
                         logger.error(f"Failed to create output folder {self.output_folder}: {e}")
         except WebDavException as e:
-            logger.error(f"WebDAV error accessing output folder {self.output_folder}: {e}")
+            logger.warning(f"WebDAV error accessing output folder {self.output_folder}: {e}")
         except Exception as e:
-            logger.error(f"Error validating output folder {self.output_folder}: {e}")
+            logger.warning(f"Error validating output folder {self.output_folder}: {e}")
 
     def _webdav_folder_exists(self, folder_path: str) -> bool:
         """Check if a WebDAV folder exists, handling root (``/``) gracefully.
 
         The root path ``/`` is assumed to always exist — many WebDAV servers
         deny ``check("/")`` with a 403.  For any other path we delegate to
-        the standard ``check()`` method.
+        the standard ``check()`` method but also treat 403 responses with a 403
+        (permission denied) as "PROPFIND") as "exists" — the resource is there,
+        we just cannot inspect its metadata.
         """
         stripped = folder_path.strip("/")
         if not stripped:
             # Root path — assume it always exists
             return True
-        return self.webdav_client.check(folder_path)
+        try:
+            return self.webdav_client.check(folder_path)
+        except WebDavException as e:
+            error_str = str(e).lower()
+            if "403" in error_str or "forbidden" in error_str:
+                logger.warning(
+                    f"WebDAV check for {folder_path} returned 403 — "
+                    "assuming folder exists"
+                )
+                return True
+            raise
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """Extract text from PDF file using multiple methods."""
