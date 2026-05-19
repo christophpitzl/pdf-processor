@@ -55,14 +55,13 @@
 
 ## Docker Version Tag Strategy
 
-- Git tags control `latest` tag (not branch pushes)
-- **`latest` tag**: Only updated on Git version tags (e.g., `v1.0.0`, `v0.3.0`)
-- **`main` tag**: Applied to main branch builds (for testing, may be unstable)
-- **Version tags**: `v0.3.0`, `v0.3`, `v0` (semantic versioning)
-- **SHA tags**: `sha-xxxxx` for specific commit builds (debugging)
+- **Builds triggered only by Git tags** (not branch pushes)
+- **`latest` tag**: Updated on Git version tags (e.g., `v1.0.0`, `v0.3.0`)
+- **Version tags**: `v0.3.0`, `v0.3`, `v0` (semantic versioning, major/minor/major.minor patterns)
+- **No automatic `main` branch builds** - use version tags for all releases
 - **User guidance**: 
   - Production users should use specific version tags or `latest` (stable releases only)
-  - Testers should use `main` tag for latest main branch builds
+  - No `main` tag - all builds are version-tagged releases
 - **Multi-arch**: Images built for both `linux/amd64` and `linux/arm64`
 - **Base image**: `python:3.11-alpine` (smaller, more secure than Debian-based)
 - **Workflow file**: `.github/workflows/docker-publish.yml` handles tagging logic
