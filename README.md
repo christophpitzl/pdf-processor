@@ -400,6 +400,21 @@ FILENAME_PATTERN={date}_{type}_{summary}.pdf
 
 Modify the prompt in `src/main.py` to recognize additional document types.
 
+## Future Improvements (Memo)
+
+The following aspects could be improved in future versions:
+
+### 1. Smarter Date Handling
+- **Current behavior**: When no date is recognized in the document, the current date is used as a fallback
+- **Proposed improvement**: Only assign a date in the filename if the AI model detects a date with high confidence (e.g., confidence ≥ 0.8)
+- **Benefit**: Avoids misleading filenames when no actual document date is found
+
+### 2. Improved Summary Generation
+- **Current behavior**: Summary and entity are treated as separate fields, often resulting in cutoff entities when appended to the filename
+- **Proposed improvement**: Remove the separation between content summary and entity — let the AI model generate a single, cohesive short description that best represents the document
+- **Implementation**: Modify the prompt to request one unified "description" field (max 30-40 characters) instead of separate "summary" and "entities" fields
+- **Benefit**: More natural, readable filenames without artificial truncation or awkward concatenation
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
