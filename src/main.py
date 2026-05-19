@@ -509,6 +509,15 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             # List files in watch folder
             files = self.webdav_client.list(self.watch_folder)
 
+            # Handle None or empty response (e.g., 403 errors)
+            if files is None:
+                logger.warning(f"Could not list files in {self.watch_folder} (returned None)")
+                return
+            
+            if not isinstance(files, list):
+                logger.warning(f"Unexpected response type from list(): {type(files)}")
+                return
+
             for filename in files:
                 if isinstance(filename, str) and filename.endswith(".pdf"):
                     file_path = os.path.join(self.watch_folder, filename)

@@ -68,11 +68,14 @@ class WebApp:
                     break
                 
                 files = self.processor.webdav_client.list(self.processor.watch_folder)
-                # webdavclient3 list() returns a list of strings (filenames)
-                pdf_files = [
-                    f for f in files 
-                    if isinstance(f, str) and f.endswith('.pdf')
-                ]
+                # webdavclient3 list() returns a list of strings (filenames) or None
+                if files is None:
+                    pdf_files = []
+                else:
+                    pdf_files = [
+                        f for f in files 
+                        if isinstance(f, str) and f.endswith('.pdf')
+                    ]
                 
                 if not pdf_files:
                     logger.info("Input folder is empty, stopping manual processing")
@@ -103,20 +106,27 @@ class WebApp:
             if self.processor.webdav_client:
                 # Count input files
                 files = self.processor.webdav_client.list(self.processor.watch_folder)
-                # webdavclient3 list() returns a list of strings (filenames)
-                pdf_files = [
-                    f for f in files 
-                    if isinstance(f, str) and f.endswith('.pdf')
-                ]
+                # webdavclient3 list() returns a list of strings (filenames) or None
+                if files is None:
+                    pdf_files = []
+                else:
+                    pdf_files = [
+                        f for f in files 
+                        if isinstance(f, str) and f.endswith('.pdf')
+                    ]
                 status["input_count"] = len(pdf_files)
                 
                 # Count output files
                 try:
                     output_files = self.processor.webdav_client.list(self.processor.output_folder)
-                    output_pdfs = [
-                        f for f in output_files 
-                        if isinstance(f, str) and f.endswith('.pdf')
-                    ]
+                    # webdavclient3 list() returns a list of strings (filenames) or None
+                    if output_files is None:
+                        output_pdfs = []
+                    else:
+                        output_pdfs = [
+                            f for f in output_files 
+                            if isinstance(f, str) and f.endswith('.pdf')
+                        ]
                     status["output_count"] = len(output_pdfs)
                 except Exception as e:
                     logger.debug(f"Could not list output folder: {e}")
