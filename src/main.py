@@ -68,6 +68,14 @@ class PDFProcessor:
         self.log_level = s.log_level
         self.data_dir = s.data_dir
         self.logs_dir = s.logs_dir
+        self.language = s.language
+
+        # Stop flag for interrupting processing
+        self._stop_requested = False
+        # Progress tracking
+        self.progress_total = 0
+        self.progress_current = 0
+        self.progress_errors = 0
 
         # Setup logging
         logger.remove()
@@ -216,6 +224,13 @@ class PDFProcessor:
             logger.warning("No text to analyze")
             return {}
 
+        # Determine language for summary generation
+        language_instruction = (
+            "Generate the summary in German language."
+            if self.language == "de"
+            else "Generate the summary in English language."
+        )
+
         # Create prompt for document analysis
         prompt = f"""Analyze the following document text and extract key information.
 
@@ -227,6 +242,8 @@ Return a JSON object with the following structure:
     "confidence": 0.0-1.0 confidence score",
     "entities": ["list of important entities like company names, person names, etc."]
 }}
+
+{language_instruction}
 
 Document text:
 {text[:4000]}  # Limit text length for API
@@ -381,6 +398,11 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
         logger.info(f"Processing file: {original_filename}")
 
         try:
+            # Check for stop before starting
+            if self._stop_requested:
+                logger.info("Stop requested, aborting processing")
+                return False
+
             # Copy file to local data dir for processing (handles network latency)
             local_path = Path(self.data_dir) / original_filename
             shutil.copy2(str(file_path), str(local_path))
@@ -390,7 +412,15 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
             if not text:
                 logger.warning(f"No text extracted from {original_filename}, skipping")
+                self.progress_errors += 1
                 # Clean up local copy
+                if local_path.exists():
+                    local_path.unlink()
+                return False
+
+            # Check for stop before AI analysis
+            if self._stop_requested:
+                logger.info("Stop requested before AI analysis")
                 if local_path.exists():
                     local_path.unlink()
                 return False
@@ -467,13 +497,27 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
             logger.info(f"Found {len(pdf_files)} PDF file(s) to process")
 
+            # Reset progress for this batch
+            self.progress_total = len(pdf_files)
+            self.progress_current = 0
+            self.progress_errors = 0
+            self._stop_requested = False
+
             for file_path in pdf_files:
+                # Check for stop before each file
+                if self._stop_requested:
+                    logger.info("Processing stopped by user request")
+                    break
+
                 # Compute hash to check for duplicates
                 file_hash = self._get_file_hash(file_path)
 
                 if file_hash and file_hash not in self.processed_files:
                     self.processed_files[file_hash] = file_path.name
-                    self.process_pdf(file_path, file_path.name)
+                    success = self.process_pdf(file_path, file_path.name)
+                    self.progress_current += 1
+                    if not success:
+                        self.progress_errors += 1
                 elif file_hash:
                     logger.debug(f"File already processed: {file_path.name}")
 
@@ -485,6 +529,11 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             logger.error(f"I/O error checking for new files: {e}")
         except Exception as e:
             logger.error(f"Error checking for new files: {e}")
+
+    def stop(self) -> None:
+        """Request a graceful stop of processing."""
+        self._stop_requested = True
+        logger.info("Stop requested — processing will halt after current file")
 
     def _resolve_watch_dir(self) -> Path:
         """Resolve the watch directory, following symlinks if needed.

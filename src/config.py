@@ -55,6 +55,9 @@ class Settings:
     # ── Logging ─────────────────────────────────────────────────────────
     log_level: str = "INFO"
 
+    # ── Language ──────────────────────────────────────────────────────
+    language: str = "de"
+
     @classmethod
     def from_env(cls) -> "Settings":
         """Build a ``Settings`` from environment variables (and ``.env``).
@@ -90,4 +93,6 @@ class Settings:
             web_port=int(os.getenv("WEB_PORT", "8080")),
             # Logging
             log_level=os.getenv("LOG_LEVEL", "INFO"),
+            # Language
+            language=os.getenv("LANGUAGE", "de"),
         )

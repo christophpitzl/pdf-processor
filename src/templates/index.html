@@ -179,58 +179,6 @@
             color: #e67e22;
         }
 
-        .diag-section {
-            margin: 15px 0;
-            padding: 12px;
-            border-radius: 8px;
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
-        }
-        .diag-section h3 {
-            font-size: 1rem;
-            margin-bottom: 8px;
-            color: #495057;
-        }
-        .diag-section pre {
-            font-size: 0.8rem;
-            background: #e9ecef;
-            padding: 8px;
-            border-radius: 4px;
-            overflow-x: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-        .badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-        .badge.ok {
-            background: #d4edda;
-            color: #155724;
-        }
-        .badge.err {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .badge.warn {
-            background: #fff3cd;
-            color: #856404;
-        }
-        .diag-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 15px;
-        }
-        .diag-card {
-            background: white;
-            border: 1px solid #dee2e6;
-            border-radius: 10px;
-            padding: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        }
         .btn-secondary {
             background: linear-gradient(135deg, #6c757d, #495057);
             box-shadow: 0 5px 15px rgba(108, 117, 125, 0.4);
@@ -238,6 +186,62 @@
         }
         .btn-secondary:hover:not(:disabled) {
             box-shadow: 0 8px 20px rgba(108, 117, 125, 0.6);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #dc3545, #a71d2a);
+            box-shadow: 0 5px 15px rgba(220, 53, 69, 0.4);
+            margin-left: 10px;
+        }
+        .btn-danger:hover:not(:disabled) {
+            box-shadow: 0 8px 20px rgba(220, 53, 69, 0.6);
+        }
+        .progress-bar-container {
+            background: #e9ecef;
+            border-radius: 10px;
+            height: 24px;
+            overflow: hidden;
+            margin-top: 15px;
+            position: relative;
+        }
+        .progress-bar-fill {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-bar-text {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .controls-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .language-select {
+            padding: 10px 16px;
+            border-radius: 50px;
+            border: 2px solid #667eea;
+            background: white;
+            font-size: 1rem;
+            color: #333;
+            cursor: pointer;
+            outline: none;
+        }
+        .language-select:focus {
+            border-color: #764ba2;
         }
     </style>
 </head>
@@ -267,12 +271,22 @@
         
         <div class="controls">
             <h2 style="color: #667eea; margin-bottom: 20px;">Manual Processing</h2>
-            <button id="process-btn" onclick="startProcessing()">Start Processing</button>
-            <button id="diag-btn" class="btn-secondary" onclick="runDiagnostics()">🔍 Run Diagnostics</button>
+            <div class="controls-row">
+                <button id="process-btn" onclick="startProcessing()">Start Processing</button>
+                <button id="stop-btn" class="btn-danger" onclick="stopProcessing()" disabled>Stop</button>
+                <select id="language-select" class="language-select" onchange="changeLanguage()">
+                    <option value="de">🇩🇪 Deutsch</option>
+                    <option value="en">🇬🇧 English</option>
+                </select>
+            </div>
             
             <div class="processing" id="processing-indicator">
                 <div class="spinner"></div>
-                <p>Processing documents... The process will continue until the input folder is empty.</p>
+                <p>Processing documents... Will continue until the input folder is empty.</p>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" id="progress-fill"></div>
+                    <div class="progress-bar-text" id="progress-text">0 / 0</div>
+                </div>
             </div>
             
             <div class="status" id="status-message" style="display: none;"></div>
@@ -284,15 +298,8 @@
                 <strong>Check Interval:</strong> <span id="check-interval">-</span> seconds
                 <span style="color: #999; font-size: 0.9rem;">(0 = disabled)</span>
             </div>
-        </div>
-
-        <div class="config" id="diagnostics-panel" style="display: none;">
-            <h2>🔍 Diagnostics</h2>
-            <div id="diagnostics-results">
-                <div class="diag-section">
-                    <p style="color: #666;">Running diagnostics...</p>
-                    <div class="spinner" style="width:24px;height:24px;margin:10px auto;"></div>
-                </div>
+            <div class="config-item">
+                <strong>Language:</strong> <span id="config-language">-</span>
             </div>
         </div>
     </div>
@@ -316,6 +323,10 @@
                     }
                     document.getElementById('check-interval').textContent = data.check_interval;
                     
+                    const lang = data.language || 'de';
+                    document.getElementById('config-language').textContent = lang === 'de' ? '🇩🇪 Deutsch' : '🇬🇧 English';
+                    document.getElementById('language-select').value = lang;
+                    
                     const statusEl = document.getElementById('processing-status');
                     if (data.processing) {
                         statusEl.textContent = 'Running';
@@ -326,25 +337,47 @@
                     }
                     
                     isProcessing = data.processing;
-                    updateButton();
+                    updateButtons();
+                    updateProgress(data.progress);
                 })
                 .catch(error => {
                     console.error('Error fetching status:', error);
                 });
         }
         
-        function updateButton() {
+        function updateButtons() {
             const btn = document.getElementById('process-btn');
+            const stopBtn = document.getElementById('stop-btn');
             const indicator = document.getElementById('processing-indicator');
             
             if (isProcessing) {
                 btn.disabled = true;
                 btn.textContent = 'Processing...';
+                stopBtn.disabled = false;
                 indicator.classList.add('active');
             } else {
                 btn.disabled = false;
                 btn.textContent = 'Start Processing';
+                stopBtn.disabled = true;
                 indicator.classList.remove('active');
+            }
+        }
+
+        function updateProgress(progress) {
+            if (!progress) return;
+            const total = progress.total || 0;
+            const current = progress.current || 0;
+            const errors = progress.errors || 0;
+            const fill = document.getElementById('progress-fill');
+            const text = document.getElementById('progress-text');
+
+            if (total > 0) {
+                const pct = Math.min(Math.round((current / total) * 100), 100);
+                fill.style.width = pct + '%';
+                text.textContent = current + ' / ' + total + (errors > 0 ? ' (' + errors + ' errors)' : '');
+            } else {
+                fill.style.width = '0%';
+                text.textContent = '0 / 0';
             }
         }
         
@@ -367,7 +400,7 @@
                 if (data.status === 'started') {
                     showStatus('Processing started. Will run until input folder is empty.', 'info');
                     isProcessing = true;
-                    updateButton();
+                    updateButtons();
                 } else if (data.status === 'already_running') {
                     showStatus(data.message, 'error');
                 }
@@ -376,116 +409,52 @@
                 showStatus('Error starting processing: ' + error, 'error');
             });
         }
+
+        function stopProcessing() {
+            if (!isProcessing) {
+                return;
+            }
+            
+            fetch('/api/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                showStatus(data.message, 'info');
+            })
+            .catch(error => {
+                showStatus('Error stopping processing: ' + error, 'error');
+            });
+        }
+
+        function changeLanguage() {
+            const lang = document.getElementById('language-select').value;
+            fetch('/api/language', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ language: lang })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    showStatus('Language changed to ' + (lang === 'de' ? 'Deutsch' : 'English'), 'success');
+                }
+            })
+            .catch(error => {
+                showStatus('Error changing language: ' + error, 'error');
+            });
+        }
         
         function showStatus(message, type) {
             const statusMsg = document.getElementById('status-message');
             statusMsg.textContent = message;
             statusMsg.className = 'status ' + type;
             statusMsg.style.display = 'block';
-        }
-
-        function runDiagnostics() {
-            const panel = document.getElementById('diagnostics-panel');
-            const results = document.getElementById('diagnostics-results');
-            panel.style.display = 'block';
-            results.innerHTML = `
-                <div class="diag-section">
-                    <p style="color: #666;">Running diagnostics...</p>
-                    <div class="spinner" style="width:24px;height:24px;margin:10px auto;"></div>
-                </div>
-            `;
-            const btn = document.getElementById('diag-btn');
-            btn.disabled = true;
-            btn.textContent = 'Running...';
-
-            fetch('/api/diagnostics')
-                .then(response => response.json())
-                .then(data => {
-                    results.innerHTML = renderDiagnostics(data);
-                })
-                .catch(error => {
-                    results.innerHTML = `
-                        <div class="diag-section">
-                            <h3>❌ Error</h3>
-                            <pre>${error}</pre>
-                        </div>
-                    `;
-                })
-                .finally(() => {
-                    btn.disabled = false;
-                    btn.textContent = '🔍 Run Diagnostics';
-                });
-        }
-
-        function renderDiagnostics(data) {
-            let html = '<div class="diag-grid">';
-
-            // Folders card (incoming/processed)
-            const f = data.folders || {};
-            const incomingOk = f.incoming_exists === true;
-            const processedOk = f.processed_exists === true;
-            const foldersOk = incomingOk && processedOk;
-            html += `<div class="diag-card">
-                <h3>📁 Folders <span class="badge ${foldersOk ? 'ok' : 'err'}">${foldersOk ? 'OK' : 'FAIL'}</span></h3>
-                <div class="config-item"><strong>Incoming dir:</strong> ${escHtml(f.incoming_dir || '?')}</div>
-                <div class="config-item"><strong>Processed dir:</strong> ${escHtml(f.processed_dir || '?')}</div>
-                <div class="config-item ${incomingOk ? 'ok' : 'err'}"><strong>Incoming exists:</strong> ${f.incoming_exists !== undefined ? f.incoming_exists : '?'}</div>
-                <div class="config-item ${processedOk ? 'ok' : 'err'}"><strong>Processed exists:</strong> ${f.processed_exists !== undefined ? f.processed_exists : '?'}</div>
-                ${f.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(f.error)}</div>` : ''}
-                ${f.incoming_contents ? `<div class="config-item"><strong>Incoming contents:</strong></div><pre>${escHtml(f.incoming_contents.join('\n'))}</pre>` : ''}
-                ${f.processed_contents ? `<div class="config-item"><strong>Processed contents:</strong></div><pre>${escHtml(f.processed_contents.join('\n'))}</pre>` : ''}
-            </div>`;
-
-            // Ollama card
-            const ol = data.ollama || {};
-            const olOk = ol.reachable === true;
-            html += `<div class="diag-card">
-                <h3>🧠 Ollama <span class="badge ${olOk ? 'ok' : 'err'}">${olOk ? 'OK' : 'FAIL'}</span></h3>
-                <div class="config-item"><strong>URL:</strong> ${escHtml(ol.base_url || '?')}</div>
-                <div class="config-item"><strong>Model:</strong> ${escHtml(ol.model || '?')}</div>
-                <div class="config-item ${olOk ? 'ok' : 'err'}"><strong>Reachable:</strong> ${ol.reachable !== undefined ? ol.reachable : '?'}</div>
-                <div class="config-item ${ol.model_available ? 'ok' : 'warn'}"><strong>Model available:</strong> ${ol.model_available !== undefined ? ol.model_available : '?'}</div>
-                ${ol.error ? `<div class="config-item err"><strong>Error:</strong> ${escHtml(ol.error)}</div>` : ''}
-                ${ol.available_models ? `<div class="config-item"><strong>Available models:</strong></div><pre>${escHtml(ol.available_models.join('\n'))}</pre>` : ''}
-            </div>`;
-
-            // Folder Details card
-            const fg = data.folder_details || {};
-            let folderRows = '';
-            for (const [key, f] of Object.entries(fg)) {
-                const fOk = f.exists === true && f.error === null;
-                const icon = fOk ? '✅' : '❌';
-                folderRows += `<div class="config-item ${fOk ? 'ok' : 'err'}">${icon} <strong>${key}:</strong> ${escHtml(f.path || '')}`;
-                if (f.error) folderRows += `<br><span class="err">❌ ${escHtml(f.error)}</span>`;
-                if (f.hint) folderRows += `<br><span class="warn"><small>💡 ${escHtml(f.hint)}</small></span>`;
-                if (f.type === 'local' || f.type === 'host') folderRows += ` (${f.file_count} items, read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
-                folderRows += '</div>';
-            }
-            html += `<div class="diag-card">
-                <h3>📁 Folder Checks</h3>
-                ${folderRows}
-            </div>`;
-
-            // Configuration card
-            const cfg = data.configuration || {};
-            let cfgRows = '';
-            for (const [key, val] of Object.entries(cfg)) {
-                if (key === 'ollama_password_configured' || key === 'ollama_username_configured') continue;
-                cfgRows += `<div class="config-item"><strong>${key}:</strong> ${escHtml(String(val))}</div>`;
-            }
-            html += `<div class="diag-card">
-                <h3>⚙️ Configuration</h3>
-                ${cfgRows}
-            </div>`;
-
-            html += '</div>';
-            return html;
-        }
-
-        function escHtml(str) {
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
         }
 
         // Update status every 2 seconds

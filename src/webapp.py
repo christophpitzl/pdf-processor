@@ -9,9 +9,8 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from loguru import logger
-import httpx
 
 from src.main import PDFProcessor
 
@@ -35,7 +34,8 @@ class WebApp:
         self.app.route("/")(self.index)
         self.app.route("/api/status")(self.api_status)
         self.app.route("/api/process", methods=["POST"])(self.api_process)
-        self.app.route("/api/diagnostics")(self.api_diagnostics)
+        self.app.route("/api/stop", methods=["POST"])(self.api_stop)
+        self.app.route("/api/language", methods=["POST"])(self.api_language)
 
     def index(self):
         """Render main page."""
@@ -70,8 +70,32 @@ class WebApp:
 
         return jsonify({"status": "started", "message": "Processing started"})
 
+    def api_stop(self):
+        """Request a graceful stop of processing."""
+        if not self._processing:
+            return jsonify({
+                "status": "not_running",
+                "message": "No processing is currently running",
+            }), 409
+
+        # Signal the processor to stop
+        self.processor.stop()
+        logger.info("Stop requested via web interface")
+
+        return jsonify({"status": "stopping", "message": "Processing will stop after current file"})
+
+    def api_language(self):
+        """Change the language for file naming."""
+        data = request.get_json()
+        lang = data.get("language", "de")
+        if lang not in ("de", "en"):
+            return jsonify({"status": "error", "message": "Invalid language. Use 'de' or 'en'."}), 400
+        self.processor.language = lang
+        logger.info(f"Language changed to: {lang}")
+        return jsonify({"status": "ok", "message": f"Language set to {lang}"})
+
     def _process_until_empty(self):
-        """Process files until input folder is empty."""
+        """Process files until input folder is empty or stop requested."""
         self._processing = True
         try:
             logger.info("Manual processing started")
@@ -79,6 +103,11 @@ class WebApp:
                 watch_dir = self.processor.watch_dir.resolve()
                 if not watch_dir.exists():
                     logger.error("Watch directory does not exist: " f"{watch_dir}")
+                    break
+
+                # Check for stop before each iteration
+                if self.processor._stop_requested:
+                    logger.info("Processing stopped by user request")
                     break
 
                 pdf_files: List[Path] = sorted(
@@ -97,12 +126,18 @@ class WebApp:
                 logger.info(f"Found {len(pdf_files)} file(s) to process")
                 self.processor.check_for_new_files()
 
+                # If stop was requested inside check_for_new_files, don't loop again
+                if self.processor._stop_requested:
+                    break
+
                 time.sleep(1)
         except Exception as e:
             logger.error(f"Error in manual processing: {e}")
         finally:
             self._processing = False
             logger.info("Manual processing finished")
+            # Reset stop flag for next run
+            self.processor._stop_requested = False
 
     def _count_pdfs(self, directory: Path) -> int:
         """Count PDF files in a directory (flat, non-recursive).
@@ -130,6 +165,12 @@ class WebApp:
             "output_count": 0,
             "processing": self._processing,
             "check_interval": self.processor.check_interval,
+            "language": self.processor.language,
+            "progress": {
+                "total": self.processor.progress_total,
+                "current": self.processor.progress_current,
+                "errors": self.processor.progress_errors,
+            },
             "folders": self._check_folders(),
         }
 
@@ -240,78 +281,6 @@ class WebApp:
             logger.error(f"Error checking folder {path}: {e}")
 
         return status
-
-    def api_diagnostics(self):
-        """Run comprehensive diagnostics and return results as JSON."""
-        try:
-            results = self._run_diagnostics()
-            return jsonify(results)
-        except Exception as e:
-            logger.error(f"Error running diagnostics: {e}")
-            return jsonify({"error": str(e)}), 500
-
-    def _run_diagnostics(self) -> Dict[str, Any]:
-        """Run all diagnostic checks and return structured results."""
-        diagnostics = {
-            "ollama": self._diagnose_ollama(),
-            "folders": self._diagnose_folders(),
-            "folder_details": self._check_folders(),
-            "configuration": self._diagnose_configuration(),
-        }
-        return diagnostics
-
-    def _diagnose_folders(self) -> Dict[str, Any]:
-        """Check incoming/processed folder accessibility."""
-        result: Dict[str, Any] = {
-            "incoming_dir": str(self.processor.watch_dir),
-            "processed_dir": str(self.processor.output_dir),
-            "incoming_exists": False,
-            "processed_exists": False,
-            "error": None,
-        }
-
-        watch = self.processor.watch_dir.resolve()
-        output = self.processor.output_dir.resolve()
-
-        result["incoming_exists"] = watch.exists()
-        result["processed_exists"] = output.exists()
-
-        # List contents if they exist
-        if watch.exists():
-            try:
-                children = sorted([p.name for p in watch.iterdir()])
-                result["incoming_contents"] = children
-            except Exception as e:
-                result["incoming_list_error"] = str(e)
-
-        if output.exists():
-            try:
-                children = sorted([p.name for p in output.iterdir()])
-                result["processed_contents"] = children
-            except Exception as e:
-                result["processed_list_error"] = str(e)
-
-        return result
-
-    def _diagnose_configuration(self) -> Dict[str, Any]:
-        """Return sanitised configuration values for debugging."""
-        s = self.processor.settings
-        return {
-            "ollama_base_url": s.ollama_base_url,
-            "ollama_model": s.ollama_model,
-            "ollama_wol_enabled": s.ollama_wol_enabled,
-            "incoming_dir": s.incoming_dir,
-            "processed_dir": s.processed_dir,
-            "check_interval": s.check_interval,
-            "scan_date_format": s.scan_date_format,
-            "min_confidence": s.min_confidence,
-            "filename_pattern": s.filename_pattern,
-            "data_dir": s.data_dir,
-            "logs_dir": s.logs_dir,
-            "web_host": s.web_host,
-            "web_port": s.web_port,
-            "log_level": s.log_level,
-        }
 
     def run(self, host=None, port=None, debug=False):
         """Run the Flask app.

@@ -25,8 +25,9 @@ All processing happens entirely on your local infrastructure — no sensitive do
 - **Privacy-First**: All document content stays on-premises; no cloud API keys needed
 - **Smart Filename Generation**: Creates descriptive filenames like `2024-05-14_invoice_acme_corp.pdf`
 - **Configurable**: Easy to customize through environment variables
+- **Language Selection**: Choose between German (default) or English for AI-generated summaries in filenames
 - **Continuous Monitoring**: Runs as a daemon, checking for new files at regular intervals
-- **Web Dashboard**: Modern web UI for monitoring and manual processing triggers
+- **Web Dashboard**: Modern web UI for monitoring, manual processing triggers, stop button, and progress bar
 - **No Privileged Mode**: The container no longer needs `privileged: true` or `SYS_ADMIN` capabilities
 
 ## Prerequisites
@@ -138,11 +139,12 @@ volumes:
 
 The dashboard provides:
 - **Input count** — PDFs waiting in the incoming folder
-- **Processing status** — Idle or running
+- **Processing status** — Idle or running with real-time progress bar
 - **Output count** — Successfully processed PDFs
 - **Start Processing** button — manually trigger batch processing
-- **Run Diagnostics** button — comprehensive system health check (folders, Ollama, config)
-- **Configuration display** — shows current settings
+- **Stop button** — gracefully stop processing after the current file
+- **Language selector** — switch between German and English for AI-generated summaries
+- **Configuration display** — shows current settings and language
 
 ### Architecture Change: Internal NFS → Host-Mounted Volumes
 
@@ -176,6 +178,7 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `MIN_CONFIDENCE` | `0.6` | Minimum confidence score for processing |
 | `FILENAME_PATTERN` | `{date}_{type}_{summary}.pdf` | Pattern for new filenames |
 | `CHECK_INTERVAL` | `60` | Seconds between file checks (0 = disable auto-check) |
+| `LANGUAGE` | `de` | Language for AI-generated summaries (`de` for German, `en` for English) |
 | `WEB_HOST` | `0.0.0.0` | Host to bind the web interface to |
 | `WEB_PORT` | `8080` | Port for the web interface |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |

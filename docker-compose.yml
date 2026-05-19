@@ -50,6 +50,7 @@ services:
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
       - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}
       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
+      - LANGUAGE=${LANGUAGE:-de}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # WOL
       - OLLAMA_WOL_ENABLED=${OLLAMA_WOL_ENABLED:-false}
