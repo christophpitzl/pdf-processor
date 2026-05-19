@@ -203,7 +203,8 @@ class PDFProcessor:
         # Check watch folder
         try:
             logger.info(f"Checking WebDAV watch folder: {self.watch_folder}")
-            if self.webdav_client.check(self.watch_folder):
+            folder_exists = self._webdav_folder_exists(self.watch_folder)
+            if folder_exists:
                 # Try to list contents to verify readability
                 try:
                     files = self.webdav_client.list(self.watch_folder)
@@ -213,12 +214,13 @@ class PDFProcessor:
                     logger.warning(f"Watch folder exists but listing failed (may be permission): {self.watch_folder} - {list_error}")
             else:
                 logger.warning(f"Watch folder does not exist on WebDAV: {self.watch_folder}")
-                # Attempt to create it
-                try:
-                    self.webdav_client.mkdir(self.watch_folder)
-                    logger.info(f"Created watch folder on WebDAV: {self.watch_folder}")
-                except Exception as e:
-                    logger.error(f"Failed to create watch folder {self.watch_folder}: {e}")
+                # Attempt to create it (skip for root)
+                if self.watch_folder.strip("/"):
+                    try:
+                        self.webdav_client.mkdir(self.watch_folder)
+                        logger.info(f"Created watch folder on WebDAV: {self.watch_folder}")
+                    except Exception as e:
+                        logger.error(f"Failed to create watch folder {self.watch_folder}: {e}")
         except WebDavException as e:
             logger.warning(f"WebDAV error accessing watch folder {self.watch_folder} (non-critical): {e}")
         except Exception as e:
@@ -227,7 +229,8 @@ class PDFProcessor:
         # Check output folder
         try:
             logger.info(f"Checking WebDAV output folder: {self.output_folder}")
-            if self.webdav_client.check(self.output_folder):
+            folder_exists = self._webdav_folder_exists(self.output_folder)
+            if folder_exists:
                 # Try to list contents to verify readability
                 try:
                     files = self.webdav_client.list(self.output_folder)
@@ -237,15 +240,29 @@ class PDFProcessor:
                     logger.warning(f"Output folder exists but listing failed (may be permission): {self.output_folder} - {list_error}")
             else:
                 logger.warning(f"Output folder does not exist on WebDAV: {self.output_folder}")
-                try:
-                    self.webdav_client.mkdir(self.output_folder)
-                    logger.info(f"Created output folder on WebDAV: {self.output_folder}")
-                except Exception as e:
-                    logger.error(f"Failed to create output folder {self.output_folder}: {e}")
+                if self.output_folder.strip("/"):
+                    try:
+                        self.webdav_client.mkdir(self.output_folder)
+                        logger.info(f"Created output folder on WebDAV: {self.output_folder}")
+                    except Exception as e:
+                        logger.error(f"Failed to create output folder {self.output_folder}: {e}")
         except WebDavException as e:
             logger.error(f"WebDAV error accessing output folder {self.output_folder}: {e}")
         except Exception as e:
             logger.error(f"Error validating output folder {self.output_folder}: {e}")
+
+    def _webdav_folder_exists(self, folder_path: str) -> bool:
+        """Check if a WebDAV folder exists, handling root (``/``) gracefully.
+
+        The root path ``/`` is assumed to always exist — many WebDAV servers
+        deny ``check("/")`` with a 403.  For any other path we delegate to
+        the standard ``check()`` method.
+        """
+        stripped = folder_path.strip("/")
+        if not stripped:
+            # Root path — assume it always exists
+            return True
+        return self.webdav_client.check(folder_path)
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         """Extract text from PDF file using multiple methods."""

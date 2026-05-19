@@ -238,7 +238,10 @@ class WebApp:
             return status
 
         try:
-            if not self.processor.webdav_client.check(folder_path):
+            # Root path "/" is assumed to always exist — many WebDAV servers
+            # deny check("/") with a 403.
+            stripped = folder_path.strip("/")
+            if stripped and not self.processor.webdav_client.check(folder_path):
                 status["error"] = "Folder does not exist on WebDAV"
                 logger.warning(f"WebDAV folder does not exist: {folder_path}")
                 return status
