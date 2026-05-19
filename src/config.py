@@ -73,7 +73,7 @@ class Settings:
             webdav_output_folder=os.getenv("WEBDAV_OUTPUT_FOLDER", "/processed"),
             # Ollama
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:0.8b"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "granite4.1:3b"),
             # WOL
             ollama_wol_enabled=os.getenv("OLLAMA_WOL_ENABLED", "false").lower()
             == "true",

@@ -209,7 +209,7 @@ Any variable not set in `.env` will automatically use its built-in default.
 | `WEBDAV_WATCH_FOLDER` | `/incoming` | Folder to monitor for new PDFs |
 | `WEBDAV_OUTPUT_FOLDER` | `/processed` | Folder to save processed files |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
-| `OLLAMA_MODEL` | `qwen3.5:0.8b` | Local model to use for analysis |
+| `OLLAMA_MODEL` | `granite4.1:3b` | Local model to use for analysis |
 | `OLLAMA_WOL_ENABLED` | `false` | Enable Wake-on-LAN to wake up Ollama server |
 | `OLLAMA_MAC_ADDRESS` | — | MAC address of Ollama server's NIC |
 | `OLLAMA_BROADCAST_HOST` | `[IP_ADDRESS]` | Broadcast IP for WOL magic packet |
@@ -361,7 +361,7 @@ The processor uses Ollama, which gives you full control over which model to run 
 
 | Model | Parameters | RAM Required | Quality |
 |-------|-----------|--------------|---------|
-| **qwen3.5:0.8b** (default) | 0.8B | ~1.6GB | Good for structured output |
+| **granite4.1:3b** (default) | 3B | ~6GB | Recommended: clean JSON without markdown |
 | **mistral** | 7B | ~8GB | Excellent document understanding |
 | **gemma2** | 9B | ~10GB | Great multilingual support |
 | **llama3.1** | 8B | ~8GB | Strong general purpose |
@@ -370,13 +370,13 @@ The processor uses Ollama, which gives you full control over which model to run 
 
 ```bash
 # Pull the default model
-docker compose exec ollama ollama pull qwen3.5:0.8b
+docker compose exec ollama ollama pull granite4.1:3b
 
 # Pull an alternative model
 docker compose exec ollama ollama pull mistral
 ```
 
-> **💡 Tip:** Start with `qwen3.5:0.8b` — it's small, fast, and works well for document classification tasks.
+> **💡 Tip:** Start with `granite4.1:3b` — it returns clean JSON without markdown wrapping.
 - **google/gemini-1.5-flash** - Fast multimodal processing
 - **meta-llama/llama-3-70b-instruct** - Strong reasoning capabilities
 
