@@ -316,8 +316,6 @@ The AI can recognize and categorize various document types:
 │   ├── config.py           # Centralized settings with defaults
 │   ├── main.py             # PDF processor core
 │   ├── webapp.py           # Flask web interface
-│   ├── utils/
-│   │   └── wol.py          # Wake-on-LAN utilities
 │   └── templates/
 │       └── index.html      # Web dashboard
 ├── tests/                  # Test suite
@@ -338,26 +336,6 @@ mypy src/                   # Type check
 pytest --cov=src/           # Test with coverage
 python -m src.main --web    # Run with web interface
 ```
-
-## Wake-on-LAN (WOL)
-
-If your Ollama server is not always running, you can enable Wake-on-LAN to automatically wake it up before processing begins.
-
-```bash
-# Enable WOL (set to true)
-OLLAMA_WOL_ENABLED=true
-
-# MAC address of the Ollama server's network interface
-OLLAMA_MAC_ADDRESS=AA:BB:CC:DD:EE:FF
-```
-
-When WOL is enabled, the processor will:
-
-1. Send a magic packet to wake up the Ollama server
-2. Wait for the Ollama API to become available (with retries)
-3. Proceed with PDF processing once the server is ready
-
-> **Note**: WOL requires that your Ollama server's network interface supports Wake-on-LAN and is configured to accept magic packets.
 
 ## Versioning
 

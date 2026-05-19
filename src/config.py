@@ -65,14 +65,6 @@ class Settings:
             # Ollama
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "granite4.1:3b"),
-            # WOL
-            ollama_wol_enabled=os.getenv("OLLAMA_WOL_ENABLED", "false").lower()
-            == "true",
-            ollama_mac_address=os.getenv("OLLAMA_MAC_ADDRESS"),
-            ollama_broadcast_host=os.getenv("OLLAMA_BROADCAST_HOST", "255.255.255.255"),
-            ollama_wol_port=int(os.getenv("OLLAMA_WOL_PORT", "9")),
-            ollama_wol_retries=int(os.getenv("OLLAMA_WOL_RETRIES", "10")),
-            ollama_wol_retry_delay=float(os.getenv("OLLAMA_WOL_RETRY_DELAY", "5.0")),
             # Processing
             scan_date_format=os.getenv("SCAN_DATE_FORMAT", "%Y-%m-%d"),
             min_confidence=float(os.getenv("MIN_CONFIDENCE", "0.6")),
