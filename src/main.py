@@ -450,6 +450,10 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
         """Process a single PDF file."""
         logger.info(f"Processing file: {original_filename}")
 
+        if not self.webdav_client:
+            logger.error("WebDAV client not initialized")
+            return False
+
         try:
             # Download file to local temp directory
             local_path = os.path.join(self.data_dir, original_filename)
@@ -479,11 +483,12 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             logger.info(f"Original: {original_filename} -> New: {new_filename}")
 
             # Upload to output folder
-            output_path = os.path.join(self.output_folder, new_filename)
-            self.webdav_client.upload_sync(
-                remote_path=output_path,
-                local_path=local_path,
-            )
+            if self.webdav_client:
+                output_path = os.path.join(self.output_folder, new_filename)
+                self.webdav_client.upload_sync(
+                    remote_path=output_path,
+                    local_path=local_path,
+                )
 
             # Optionally delete from source folder
             # self.webdav_client.delete(file_path)
@@ -538,6 +543,10 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
     def _get_file_hash(self, file_path: str) -> Optional[str]:
         """Get MD5 hash of a file."""
+        if not self.webdav_client:
+            logger.error("WebDAV client not initialized")
+            return None
+            
         try:
             # Download file to calculate hash
             local_path = os.path.join(self.data_dir, "temp_hash.pdf")
