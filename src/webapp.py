@@ -122,20 +122,23 @@ class WebApp:
                 status["input_count"] = len(pdf_files)
                 
                 # Count output files
+                is_error = False
                 try:
                     output_files = self.processor.webdav_client.list(self.processor.output_folder)
-                    # webdavclient3 list() returns a list of strings (filenames) or None
-                    if output_files is None:
-                        output_pdfs = []
-                    else:
-                        output_pdfs = [
-                            f for f in output_files 
-                            if isinstance(f, str) and f.endswith('.pdf')
-                        ]
-                    status["output_count"] = len(output_pdfs)
                 except Exception as e:
-                    logger.debug(f"Could not list output folder: {e}")
-                    status["output_count"] = -1  # Indicates error
+                    logger.debug(f"Could not list output folder '{self.processor.output_folder}': {e}")
+                    is_error = True
+                    output_files = None
+                    status["output_folder_error"] = str(e)
+
+                if output_files is None:
+                    output_pdfs = []
+                else:
+                    output_pdfs = [
+                        f for f in output_files 
+                        if isinstance(f, str) and f.endswith('.pdf')
+                    ]
+                status["output_count"] = -1 if is_error else len(output_pdfs)
         except Exception as e:
             logger.error(f"Error getting status: {e}")
         
@@ -199,12 +202,16 @@ class WebApp:
                 status["error"] = "Folder is not readable"
                 logger.error(f"Local folder not readable: {path}")
 
-            # Check writability
-            if os.access(str(path), os.W_OK):
+            # Actual write test — create a temp file, write, then delete
+            try:
+                test_file = path / ".write_test_tmp"
+                test_file.write_text("ok")
+                test_file.unlink()
                 status["writable"] = True
-            else:
-                status["error"] = status.get("error") or "Folder is not writable"
-                logger.error(f"Local folder not writable: {path}")
+            except Exception as we:
+                status["writable"] = False
+                status["error"] = status.get("error") or f"Write test failed: {we}"
+                logger.error(f"Local folder write test failed for {path}: {we}")
 
         except PermissionError:
             status["error"] = "Permission denied"
@@ -230,6 +237,7 @@ class WebApp:
             "type": folder_type,
             "exists": False,
             "readable": False,
+            "writable": False,
             "file_count": 0,
             "error": None,
         }
@@ -249,6 +257,25 @@ class WebApp:
             status["exists"] = True
             status["readable"] = True
             status["file_count"] = len(files) if files else 0
+
+            # Actual write test — upload a tiny temp file, then delete it
+            try:
+                import tempfile
+                test_local = tempfile.NamedTemporaryFile(delete=False, suffix=".tmp")
+                test_local.write(b"ok")
+                test_local.close()
+                test_remote = folder_path.rstrip("/") + "/.write_test_tmp"
+                self.processor.webdav_client.upload_sync(
+                    remote_path=test_remote,
+                    local_path=test_local.name,
+                )
+                self.processor.webdav_client.clean(test_remote)
+                os.unlink(test_local.name)
+                status["writable"] = True
+            except Exception as we:
+                status["writable"] = False
+                status["error"] = status.get("error") or f"Write test failed: {we}"
+                logger.debug(f"WebDAV write test failed for {folder_path}: {we}")
 
         except WebDavException as e:
             status["error"] = f"WebDAV error: {e}"

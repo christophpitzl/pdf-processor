@@ -306,8 +306,14 @@
                 .then(data => {
                     document.getElementById('input-count').textContent = data.input_count;
                     const outputCount = data.output_count;
-                    document.getElementById('output-count').textContent = 
-                        outputCount < 0 ? 'Error' : outputCount;
+                    const outputEl = document.getElementById('output-count');
+                    if (outputCount < 0) {
+                        outputEl.textContent = 'Error';
+                        outputEl.title = data.output_folder_error || 'Unknown error listing output folder';
+                    } else {
+                        outputEl.textContent = outputCount;
+                        outputEl.title = '';
+                    }
                     document.getElementById('check-interval').textContent = data.check_interval;
                     
                     const statusEl = document.getElementById('processing-status');
@@ -447,7 +453,7 @@
                 folderRows += `<div class="config-item ${fOk ? 'ok' : 'err'}">${icon} <strong>${key}:</strong> ${escHtml(f.path || '')}`;
                 if (f.error) folderRows += `<br><span class="err">${escHtml(f.error)}</span>`;
                 if (f.type === 'local') folderRows += ` (read:${f.readable ? '✅' : '❌'} write:${f.writable ? '✅' : '❌'})`;
-                if (f.type === 'webdav') folderRows += ` (${f.file_count} files)`;
+                if (f.type === 'webdav') folderRows += ` (${f.file_count} files, write:${f.writable ? '✅' : '❌'})`;
                 folderRows += '</div>';
             }
             html += `<div class="diag-card">

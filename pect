@@ -1,0 +1,8 @@
+Help on function upload_to in module webdav3.client:
+
+uuppllooaadd__ttoo(self, buff, remote_path)
+    Uploads file from buffer to remote path on WebDAV server.
+    More information you can find by link http://webdav.org/specs/rfc4918.html#METHOD_PUT
+
+    :param buff: the buffer with content for file.
+    :param remote_path: the path to save file remotely on WebDAV server.
