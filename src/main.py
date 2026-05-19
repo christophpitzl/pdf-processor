@@ -362,6 +362,11 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
         """
         logger.info(f"Processing file: {original_filename}")
 
+        # CRITICAL: Verify file still exists in incoming before processing
+        if not file_path.exists():
+            logger.error(f"File no longer exists in incoming folder: {file_path}")
+            return False
+
         try:
             # Check for stop before starting
             if self._stop_requested:
@@ -431,23 +436,33 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             # Ensure output directory exists
             self.output_dir.mkdir(parents=True, exist_ok=True)
 
-            # Copy the processed file to output (with new name)
+            # Step 1: Copy the processed file to output (with new name)
             shutil.copy2(str(local_path), str(output_path))
+            logger.info(f"Copied file to output: {output_path}")
 
-            # Verify the output file was created successfully
+            # Step 2: CRITICAL - Verify the output file was created successfully
             if not output_path.exists():
-                logger.error(f"Output file was not created: {output_path}")
-                logger.error(f"File remains in incoming folder: {file_path}")
+                logger.error(f"CRITICAL: Output file was not created: {output_path}")
+                logger.error(f"File REMAINS in incoming folder: {file_path}")
                 if local_path.exists():
                     local_path.unlink()
                 return False
 
-            # Remove original file from watch directory after successful processing
-            file_path.unlink(missing_ok=True)
+            # Step 3: Only delete from incoming AFTER verifying output exists
+            try:
+                file_path.unlink(missing_ok=True)
+                logger.info(f"Deleted original from incoming: {file_path.name}")
+            except Exception as e:
+                logger.error(f"Failed to delete original file {file_path}: {e}")
+                logger.warning(
+                    "File exists in BOTH incoming and processed folders - manual cleanup needed"
+                )
 
-            # Verify original was deleted and output exists
+            # Step 4: Verify original was deleted (optional check)
             if file_path.exists():
-                logger.warning(f"Original file still exists: {file_path}")
+                logger.warning(
+                    f"Original file still exists after deletion attempt: {file_path}"
+                )
 
             # Remove local temp copy
             if local_path.exists():
