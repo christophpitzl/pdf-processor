@@ -93,8 +93,8 @@ cp .env.example .env
 Edit `.env` and set at minimum:
 
 - `NFS_SERVER` — IP or hostname of your NFS server
-- `NFS_EXPORT_PATH` — Export path on the NFS server (e.g., `/volume1/webdav/pdf-processor`)
-- `OLLAMA_BASE_URL` — URL of your Ollama server (e.g., `http://ollama.pitzl.net:11434`)
+- `NFS_EXPORT_PATH` — Export path on the NFS server (e.g., `/volume1/pdf-processor`)
+- `OLLAMA_BASE_URL` — URL of your Ollama server (e.g., `http://<your-ollama-server>:11434`)
 
 All other variables have built-in defaults. The container will automatically mount the NFS share and derive the internal paths (e.g. `/mnt/nfs/incoming` for input, `/mnt/nfs/processed` for output) from `NFS_INCOMING_SUBDIR` and `NFS_PROCESSED_SUBDIR`.
 
