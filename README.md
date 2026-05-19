@@ -168,12 +168,6 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `PROCESSED_DIR` | `/processed` | Container path for processed PDFs (mapped via Docker volume) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `granite4.1:3b` | Local model to use for analysis |
-| `OLLAMA_WOL_ENABLED` | `false` | Enable Wake-on-LAN to wake up Ollama server |
-| `OLLAMA_MAC_ADDRESS` | — | MAC address of Ollama server's NIC |
-| `OLLAMA_BROADCAST_HOST` | `255.255.255.255` | Broadcast IP for WOL magic packet |
-| `OLLAMA_WOL_PORT` | `9` | UDP port for WOL magic packet |
-| `OLLAMA_WOL_RETRIES` | `10` | Max retries waiting for Ollama to become available |
-| `OLLAMA_WOL_RETRY_DELAY` | `5.0` | Seconds between WOL retry attempts |
 | `SCAN_DATE_FORMAT` | `%Y-%m-%d` | Date format for generated filenames |
 | `MIN_CONFIDENCE` | `0.6` | Minimum confidence score for processing |
 | `FILENAME_PATTERN` | `{date}_{type}_{summary}.pdf` | Pattern for new filenames |

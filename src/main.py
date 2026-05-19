@@ -28,9 +28,6 @@ import pdfplumber
 # HTTP client for Ollama API
 import httpx
 
-# WOL (Wake-on-LAN) for waking up Ollama server
-from src.utils.wol import wake_on_lan, wait_for_ollama
-
 # Centralized configuration
 from src.config import Settings
 
@@ -55,12 +52,6 @@ class PDFProcessor:
         self.output_dir = Path(s.processed_dir)
         self.ollama_base_url = s.ollama_base_url
         self.ollama_model = s.ollama_model
-        self.ollama_mac_address = s.ollama_mac_address
-        self.ollama_broadcast_host = s.ollama_broadcast_host
-        self.ollama_wol_port = s.ollama_wol_port
-        self.ollama_wol_enabled = s.ollama_wol_enabled
-        self.ollama_wol_retries = s.ollama_wol_retries
-        self.ollama_wol_retry_delay = s.ollama_wol_retry_delay
         self.scan_date_format = s.scan_date_format
         self.min_confidence = s.min_confidence
         self.filename_pattern = s.filename_pattern
@@ -98,32 +89,6 @@ class PDFProcessor:
 
         # Validate directories
         self._validate_required_directories()
-
-        # Wake up Ollama server via WOL if enabled
-        if self.ollama_wol_enabled and self.ollama_mac_address:
-            logger.info("WOL enabled, waking up Ollama server...")
-            wake_on_lan(
-                self.ollama_mac_address,
-                host=self.ollama_broadcast_host,
-                port=self.ollama_wol_port,
-            )
-            if not wait_for_ollama(
-                ollama_base_url=self.ollama_base_url,
-                ollama_model=self.ollama_model,
-                max_retries=self.ollama_wol_retries,
-                retry_delay=self.ollama_wol_retry_delay,
-            ):
-                logger.warning(
-                    "Ollama server did not become ready, "
-                    "processing may fail if Ollama is not already running"
-                )
-        elif self.ollama_wol_enabled and not self.ollama_mac_address:
-            logger.warning(
-                "OLLAMA_WOL_ENABLED=true but OLLAMA_MAC_ADDRESS not set, "
-                "skipping WOL wake-up"
-            )
-        else:
-            logger.debug("WOL not enabled, skipping Ollama wake-up")
 
         # Check Ollama connection
         if not self.check_ollama_connection():

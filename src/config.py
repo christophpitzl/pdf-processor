@@ -30,14 +30,6 @@ class Settings:
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "granite4.1:3b"
 
-    # ── Wake-on-LAN ─────────────────────────────────────────────────────
-    ollama_wol_enabled: bool = False
-    ollama_mac_address: Optional[str] = None
-    ollama_broadcast_host: str = "255.255.255.255"
-    ollama_wol_port: int = 9
-    ollama_wol_retries: int = 10
-    ollama_wol_retry_delay: float = 5.0
-
     # ── PDF processing ──────────────────────────────────────────────────
     scan_date_format: str = "%Y-%m-%d"
     min_confidence: float = 0.6
