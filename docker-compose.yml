@@ -38,10 +38,6 @@ services:
     restart: unless-stopped
     # No privileged mode or SYS_ADMIN needed — no NFS mounting inside container
     environment:
-      # Host-mounted directories (adjust if your host paths differ)
-      # The container-side paths match the volume mounts below
-      - INCOMING_DIR=${INCOMING_DIR:-/incoming}
-      - PROCESSED_DIR=${PROCESSED_DIR:-/processed}
       # Ollama
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama.pitzl.net:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-granite4.1:3b}

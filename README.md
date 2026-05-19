@@ -164,8 +164,6 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `INCOMING_DIR` | `/incoming` | Container path for incoming PDFs (mapped via Docker volume) |
-| `PROCESSED_DIR` | `/processed` | Container path for processed PDFs (mapped via Docker volume) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `granite4.1:3b` | Local model to use for analysis |
 | `SCAN_DATE_FORMAT` | `%Y-%m-%d` | Date format for generated filenames |
