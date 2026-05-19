@@ -75,23 +75,38 @@ class WebApp:
     def api_stop(self):
         """Request a graceful stop of processing."""
         if not self._processing:
-            return jsonify({
-                "status": "not_running",
-                "message": "No processing is currently running",
-            }), 409
+            return (
+                jsonify(
+                    {
+                        "status": "not_running",
+                        "message": "No processing is currently running",
+                    }
+                ),
+                409,
+            )
 
         # Signal the processor to stop
         self.processor.stop()
         logger.info("Stop requested via web interface")
 
-        return jsonify({"status": "stopping", "message": "Processing will stop after current file"})
+        return jsonify(
+            {"status": "stopping", "message": "Processing will stop after current file"}
+        )
 
     def api_language(self):
         """Change the language for file naming."""
         data = request.get_json()
         lang = data.get("language", "de")
         if lang not in ("de", "en"):
-            return jsonify({"status": "error", "message": "Invalid language. Use 'de' or 'en'."}), 400
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Invalid language. Use 'de' or 'en'.",
+                    }
+                ),
+                400,
+            )
         self.processor.language = lang
         logger.info(f"Language changed to: {lang}")
         return jsonify({"status": "ok", "message": f"Language set to {lang}"})
@@ -101,9 +116,14 @@ class WebApp:
         try:
             self._ollama_available = self.processor.check_ollama_connection()
             if self._ollama_available:
-                return jsonify({"status": "ok", "message": "Ollama connection successful"})
+                return jsonify(
+                    {"status": "ok", "message": "Ollama connection successful"}
+                )
             else:
-                return jsonify({"status": "error", "message": "Ollama connection failed"}), 503
+                return (
+                    jsonify({"status": "error", "message": "Ollama connection failed"}),
+                    503,
+                )
         except Exception as e:
             logger.error(f"Error retrying Ollama connection: {e}")
             return jsonify({"status": "error", "message": str(e)}), 500
@@ -214,7 +234,9 @@ class WebApp:
         folders_status = {
             "data_dir": self._check_local_folder(self.processor.data_dir, "local"),
             "logs_dir": self._check_local_folder(self.processor.logs_dir, "local"),
-            "watch_dir": self._check_local_folder(str(self.processor.watch_dir), "host"),
+            "watch_dir": self._check_local_folder(
+                str(self.processor.watch_dir), "host"
+            ),
             "output_dir": self._check_local_folder(
                 str(self.processor.output_dir), "host"
             ),

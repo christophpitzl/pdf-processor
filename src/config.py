@@ -6,7 +6,6 @@ This is the single source of truth for every configurable parameter.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 import os
 
 

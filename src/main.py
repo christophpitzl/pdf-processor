@@ -90,7 +90,6 @@ class PDFProcessor:
         # Validate directories
         self._validate_required_directories()
 
-        # Check Ollama connection
         if not self.check_ollama_connection():
             logger.warning(
                 "Ollama connection check failed. "
@@ -130,31 +129,31 @@ class PDFProcessor:
                 logger.error(f"Error validating {label.lower()} directory {path}: {e}")
 
     def extract_text_from_pdf(self, pdf_path: str) -> str:
-            """Extract text from PDF file using multiple methods."""
-            text = ""
+        """Extract text from PDF file using multiple methods."""
+        text = ""
 
-            try:
-                # Method 1: Use pdfplumber for better text extraction
-                with pdfplumber.open(pdf_path) as pdf:
-                    for page in pdf.pages:
-                        page_text = page.extract_text()
-                        if page_text:
-                            text += page_text + "\n"
+        try:
+            # Method 1: Use pdfplumber for better text extraction
+            with pdfplumber.open(pdf_path) as pdf:
+                for page in pdf.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
 
-                # If text extraction failed, try PyPDF2
-                if not text.strip():
-                    reader = PdfReader(pdf_path)
-                    for page in reader.pages:
-                        page_text = page.extract_text()
-                        if page_text:
-                            text += page_text + "\n"
+            # If text extraction failed, try PyPDF2
+            if not text.strip():
+                reader = PdfReader(pdf_path)
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n"
 
-                logger.debug(f"Extracted {len(text)} characters from PDF")
-                return text.strip()
+            logger.debug(f"Extracted {len(text)} characters from PDF")
+            return text.strip()
 
-            except Exception as e:
-                logger.error(f"Error extracting text from PDF: {e}")
-                return ""
+        except Exception as e:
+            logger.error(f"Error extracting text from PDF: {e}")
+            return ""
 
     def check_ollama_connection(self) -> bool:
         """Check if Ollama server is reachable and model is available."""
@@ -421,8 +420,20 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
             # Copy the processed file to output (with new name)
             shutil.copy2(str(local_path), str(output_path))
 
+            # Verify the output file was created successfully
+            if not output_path.exists():
+                logger.error(f"Output file was not created: {output_path}")
+                logger.error(f"File remains in incoming folder: {file_path}")
+                if local_path.exists():
+                    local_path.unlink()
+                return False
+
             # Remove original file from watch directory after successful processing
             file_path.unlink(missing_ok=True)
+
+            # Verify original was deleted and output exists
+            if file_path.exists():
+                logger.warning(f"Original file still exists: {file_path}")
 
             # Remove local temp copy
             if local_path.exists():
@@ -433,6 +444,7 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
 
         except Exception as e:
             logger.error(f"Error processing {original_filename}: {e}")
+            logger.error(f"File remains in incoming folder for retry: {file_path}")
             return False
 
     def check_for_new_files(self) -> None:
@@ -479,9 +491,16 @@ IMPORTANT: Return ONLY the raw JSON object. Do NOT wrap it in markdown code bloc
                 file_hash = self._get_file_hash(file_path)
 
                 if file_hash and file_hash not in self.processed_files:
+                    logger.info(f"Starting processing of: {file_path.name}")
                     success = self.process_pdf(file_path, file_path.name)
                     if success:
                         self.processed_files[file_hash] = file_path.name
+                        logger.info(f"Completed processing: {file_path.name}")
+                    else:
+                        logger.error(
+                            f"Failed to process {file_path.name}. "
+                            f"File remains in incoming folder for retry."
+                        )
                     self.progress_current += 1
                     if not success:
                         self.progress_errors += 1
