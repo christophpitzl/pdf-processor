@@ -4,7 +4,7 @@
 
 > A Docker-based tool that monitors a host-mounted folder for newly uploaded PDF documents, analyzes their content using a local LLM via Ollama, and renames them based on the analyzed content.
 
-**Recommended Model**: `granite4.1:3b` - provides clean JSON responses without markdown wrapping.
+**Recommended Model**: `gemma4:e2b` - provides clean JSON responses without markdown wrapping.
 
 ## Overview
 
@@ -34,8 +34,8 @@ All processing happens entirely on your local infrastructure — no sensitive do
 
 - Docker and Docker Compose installed
 - [Ollama](https://ollama.com/) installed and running separately on your host or another machine
-- A local LLM model pulled in Ollama (e.g., `granite4.1:3b`, `qwen3.5:0.8b`, `mistral`, `gemma2`)
-  - **Note**: `granite4.1:3b` is recommended as it returns clean JSON without markdown code blocks
+- A local LLM model pulled in Ollama (e.g., `gemma4:e2b`, `qwen3.5:0.8b`, `mistral`, `gemma2`)
+  - **Note**: `gemma4:e2b` is recommended as it returns clean JSON without markdown code blocks
 
 **No NFS mounting inside the container!** Folders are mapped from the host via Docker volumes.
 Simply point the container at any host directory — your PDFs can be on a local disk, an NFS share
@@ -165,7 +165,7 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama API base URL |
-| `OLLAMA_MODEL` | `granite4.1:3b` | Local model to use for analysis |
+| `OLLAMA_MODEL` | `gemma4:e2b` | Local model to use for analysis |
 | `SCAN_DATE_FORMAT` | `%Y-%m-%d` | Date format for generated filenames |
 | `MIN_CONFIDENCE` | `0.6` | Minimum confidence score for processing |
 | `FILENAME_PATTERN` | `{date}_{type}_{summary}.pdf` | Pattern for new filenames |
@@ -182,6 +182,7 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 - `{date}` — Document date or current date
 - `{type}` — Document type (invoice, receipt, contract, etc.)
 - `{summary}` — Brief summary of document content
+- `{entities}` — Important entities (company names, person names, etc.) — only included if specified in pattern
 
 ## Web Interface
 
@@ -234,7 +235,7 @@ The processor uses Ollama, which gives you full control over which model to run 
 
 | Model | Parameters | RAM Required | Quality |
 |-------|-----------|--------------|---------|
-| **granite4.1:3b** (default) | 3B | ~6GB | Recommended: clean JSON without markdown |
+| **gemma4:e2b** (default) | 3B | ~6GB | Recommended: clean JSON without markdown |
 | **mistral** | 7B | ~8GB | Excellent document understanding |
 | **gemma2** | 9B | ~10GB | Great multilingual support |
 | **llama3.1** | 8B | ~8GB | Strong general purpose |
@@ -243,13 +244,13 @@ The processor uses Ollama, which gives you full control over which model to run 
 
 ```bash
 # Pull the default model
-ollama pull granite4.1:3b
+ollama pull gemma4:e2b
 
 # Pull an alternative model
 ollama pull mistral
 ```
 
-> **💡 Tip:** Start with `granite4.1:3b` — it returns clean JSON without markdown wrapping.
+> **💡 Tip:** Start with `gemma4:e2b` — it returns clean JSON without markdown wrapping.
 
 ## Document Types
 
@@ -389,10 +390,10 @@ Set `LOG_LEVEL=DEBUG` in your `.env` file for more detailed logging.
 You can customize the filename pattern in `.env`:
 
 ```bash
-# Include entity names
+# Include entity names (entities will only be added if {entities} is in the pattern)
 FILENAME_PATTERN={date}_{type}_{summary}_{entities}.pdf
 
-# Use underscores instead of hyphens
+# Simple pattern without entities
 FILENAME_PATTERN={date}_{type}_{summary}.pdf
 ```
 

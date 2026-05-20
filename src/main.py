@@ -197,15 +197,21 @@ class PDFProcessor:
             document_types = "invoice|receipt|contract|letter|report|other"
 
         # Create prompt for document analysis
+        # Check if entities are needed based on filename pattern
+        include_entities = "{entities}" in self.filename_pattern
+        
+        entities_field = ""
+        if include_entities:
+            entities_field = '\n    "entities": ["list of important entities like company names, person names, etc."]'
+        
         prompt = f"""Analyze the following document text and extract key information.
 
 Return a JSON object with the following structure:
 {{
     "document_type": "{document_types}",
     "date": "YYYY-MM-DD format if found, otherwise null",
-    "summary": "brief 2-4 word summary, MAX 30 characters, of the document content",
-    "confidence": 0.0-1.0 confidence score",
-    "entities": ["list of important entities like company names, person names, etc."]
+    "summary": "brief summary of the document content",
+    "confidence": 0.0-1.0 confidence score",{entities_field}
 }}
 
 {language_instruction}
@@ -214,8 +220,7 @@ Document text:
 {text[:4000]}  # Limit text length for API
 
 IMPORTANT: 
-- Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON.
-- Keep the summary field under 30 characters. This is critical for filename length limits."""
+- Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON."""
 
         try:
             response = self.ollama_client.post(
@@ -326,23 +331,24 @@ IMPORTANT:
             doc_type = "file"
 
         # Generate summary (slugified)
-        # AI is instructed to keep summary under 30 chars, but we still sanitize
         summary = analysis.get("summary", "document")
-        summary = re.sub(r"[^\w\s-]", "", summary)[:35]  # Safety limit, AI should provide short summary
+        summary = re.sub(r"[^\w\s-]", "", summary)[:50]
         summary = re.sub(r"[-\s]+", "_", summary).strip("_").lower()
 
-        # Extract entities for additional context (only if summary is short enough)
-        entities = analysis.get("entities", [])
-        if entities and len(summary) < 25:
-            entity_str = entities[0].replace(" ", "_").lower()[:15]
-            if len(summary) + len(entity_str) + 1 <= 40:  # Keep total under 40 chars
-                summary = f"{summary}_{entity_str}"
+        # Extract entities if pattern includes {entities}
+        entities_str = ""
+        if "{entities}" in self.filename_pattern:
+            entities = analysis.get("entities", [])
+            if entities:
+                entities_str = "_".join([e.replace(" ", "_").lower()[:15] for e in entities[:3]])
+                entities_str = re.sub(r"[^\w_]", "", entities_str)[:30]
 
         # Replace pattern placeholders
         filename = self.filename_pattern
         filename = filename.replace("{date}", date_str)
         filename = filename.replace("{type}", doc_type)
         filename = filename.replace("{summary}", summary)
+        filename = filename.replace("{entities}", entities_str)
 
         # Ensure .pdf extension
         if not filename.lower().endswith(".pdf"):

@@ -27,7 +27,7 @@ class Settings:
 
     # ── Ollama ──────────────────────────────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
-    ollama_model: str = "granite4.1:3b"
+    ollama_model: str = "gemma4:e2b"
 
     # ── PDF processing ──────────────────────────────────────────────────
     scan_date_format: str = "%Y-%m-%d"

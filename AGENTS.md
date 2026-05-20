@@ -44,14 +44,16 @@
 - Defaults defined once in `Settings`; all other files reference it
 - `.env.example` documents all env vars with defaults
 - `docker-compose.yml` passes env vars with shell defaults (`${VAR:-default}`)
+- Entities only added to filename if `{entities}` is specified in `FILENAME_PATTERN`
 
 ## Ollama Integration
 
-- **Recommended model**: `granite4.1:3b` — returns clean JSON without markdown code blocks
+- **Recommended model**: `gemma4:e2b` — returns clean JSON without markdown code blocks
 - **JSON parsing**: Code in `src/main.py` handles models that wrap JSON in markdown (```json ... ```)
 - **Connection check**: `check_ollama_connection()` method validates Ollama availability at startup
 - **Error handling**: Enhanced logging shows full response content when JSON parsing fails
-- **Default config**: `OLLAMA_BASE_URL=http://ollama.pitzl.net:11434`, `OLLAMA_MODEL=granite4.1:3b`
+- **Default config**: `OLLAMA_BASE_URL=http://ollama.pitzl.net:11434`, `OLLAMA_MODEL=gemma4:e2b`
+- **Entities**: Only requested from AI model when `{entities}` is in the filename pattern
 
 ## Docker Version Tag Strategy
 
