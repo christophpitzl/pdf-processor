@@ -197,8 +197,17 @@ class PDFProcessor:
             document_types = "invoice|receipt|contract|letter|report|other"
 
         # Create prompt for document analysis
-        # Check if entities are needed based on filename pattern
+        # Check what fields are needed based on filename pattern
+        include_type = "{type}" in self.filename_pattern
         include_entities = "{entities}" in self.filename_pattern
+        
+        # Adjust summary length based on what else is in the filename
+        # If type or entities are included, limit summary to 20 chars to leave room
+        # Otherwise allow up to 40 chars for summary only
+        if include_type or include_entities:
+            summary_max_chars = 20
+        else:
+            summary_max_chars = 40
         
         entities_field = ""
         if include_entities:
@@ -210,7 +219,7 @@ Return a JSON object with the following structure:
 {{
     "document_type": "{document_types}",
     "date": "YYYY-MM-DD format if found, otherwise null",
-    "summary": "brief summary of the document content",
+    "summary": "brief summary, MAX {summary_max_chars} characters, of the document content",
     "confidence": 0.0-1.0 confidence score",{entities_field}
 }}
 
@@ -220,7 +229,8 @@ Document text:
 {text[:4000]}  # Limit text length for API
 
 IMPORTANT: 
-- Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON."""
+- Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON.
+- Keep the summary field under {summary_max_chars} characters. This is critical for filename length limits."""
 
         try:
             response = self.ollama_client.post(
