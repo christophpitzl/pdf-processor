@@ -200,19 +200,21 @@ class PDFProcessor:
         # Check what fields are needed based on filename pattern
         include_type = "{type}" in self.filename_pattern
         include_entities = "{entities}" in self.filename_pattern
-        
+
         # Adjust summary length based on what else is in the filename
-        # If type or entities are included, limit summary to 20 chars to leave room
-        # Otherwise allow up to 40 chars for summary only
-        if include_type or include_entities:
+        # Keep summary short to avoid overly long filenames
+        # AI model should respect these limits strictly
+        if include_type and include_entities:
             summary_max_chars = 20
+        elif include_type or include_entities:
+            summary_max_chars = 30
         else:
             summary_max_chars = 40
-        
+
         entities_field = ""
         if include_entities:
             entities_field = '\n    "entities": ["list of important entities like company names, person names, etc."]'
-        
+
         prompt = f"""Analyze the following document text and extract key information.
 
 Return a JSON object with the following structure:
@@ -342,16 +344,25 @@ IMPORTANT:
 
         # Generate summary (slugified)
         summary = analysis.get("summary", "document")
-        summary = re.sub(r"[^\w\s-]", "", summary)[:50]
+        summary = re.sub(r"[^\w\s-]", "", summary)
         summary = re.sub(r"[-\s]+", "_", summary).strip("_").lower()
+        # Emergency fallback: only truncate if AI model didn't respect limits
+        # (should be rare if prompt is followed)
+        if len(summary) > 100:
+            summary = summary[:100].rstrip("_")
 
         # Extract entities if pattern includes {entities}
         entities_str = ""
         if "{entities}" in self.filename_pattern:
             entities = analysis.get("entities", [])
             if entities:
-                entities_str = "_".join([e.replace(" ", "_").lower()[:15] for e in entities[:3]])
-                entities_str = re.sub(r"[^\w_]", "", entities_str)[:30]
+                entities_str = "_".join(
+                    [e.replace(" ", "_").lower() for e in entities[:3]]
+                )
+                entities_str = re.sub(r"[^\w_]", "", entities_str)
+                # Emergency fallback: only truncate if AI model didn't respect limits
+                if len(entities_str) > 60:
+                    entities_str = entities_str[:60]
 
         # Replace pattern placeholders
         filename = self.filename_pattern
