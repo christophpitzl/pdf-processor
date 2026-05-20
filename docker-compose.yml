@@ -40,7 +40,7 @@ services:
     environment:
       # Ollama
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama.pitzl.net:11434}
-      - OLLAMA_MODEL=${OLLAMA_MODEL:-granite4.1:3b}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-gemma4:e2b}
       # Processing
       - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}

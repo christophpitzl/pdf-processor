@@ -63,7 +63,7 @@ class Settings:
             processed_dir="/processed",
             # Ollama
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
-            ollama_model=os.getenv("OLLAMA_MODEL", "granite4.1:3b"),
+            ollama_model=os.getenv("OLLAMA_MODEL", "gemma4:e2b"),
             # Processing
             scan_date_format=os.getenv("SCAN_DATE_FORMAT", "%Y-%m-%d"),
             min_confidence=float(os.getenv("MIN_CONFIDENCE", "0.6")),
