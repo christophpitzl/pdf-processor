@@ -360,18 +360,13 @@ IMPORTANT:
             except Exception as e:
                 logger.debug(f"Could not read PDF metadata from {file_path}: {e}")
 
-        # Fallback to file system creation time or current date
+        # Fallback to file system modification time or current date
         if not date_str:
             if file_path and file_path.exists():
                 try:
-                    import os
-
                     stat = os.stat(str(file_path))
-                    # Use birth time if available (Linux), otherwise modification time
-                    if hasattr(stat, "st_birthtime"):
-                        date_obj = datetime.fromtimestamp(stat.st_birthtime)
-                    else:
-                        date_obj = datetime.fromtimestamp(stat.st_mtime)
+                    # Use file modification time (works on all platforms)
+                    date_obj = datetime.fromtimestamp(stat.st_mtime)
                     date_str = date_obj.strftime(self.scan_date_format)
                     date_source = "file system"
                 except Exception as e:
