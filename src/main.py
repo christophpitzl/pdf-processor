@@ -9,7 +9,6 @@ Folders are mapped from the Docker host:
 """
 
 import os
-import re
 import time
 import hashlib
 import json
@@ -318,24 +317,75 @@ IMPORTANT:
             return {}
 
     def generate_filename(
-        self, analysis: Dict[str, Any], original_filename: str
+        self,
+        analysis: Dict[str, Any],
+        original_filename: str,
+        file_path: Optional[Path] = None,
     ) -> str:
         """Generate new filename based on analysis and pattern."""
         if not analysis:
             return original_filename
 
-        # Extract date from analysis or use current date
+        # Extract date from analysis, file metadata, or use current date
         date_str = ""
+        date_source = "unknown"
+
         if analysis.get("date"):
             try:
                 date_obj = datetime.fromisoformat(
                     analysis["date"].replace("Z", "+00:00")
                 )
                 date_str = date_obj.strftime(self.scan_date_format)
+                date_source = "AI analysis"
             except ValueError:
-                date_str = datetime.now().strftime(self.scan_date_format)
-        else:
+                pass  # Will fall through to file metadata check
+
+        # If no date from AI, try to get creation date from PDF metadata
+        if not date_str and file_path and file_path.exists():
+            try:
+                import pdfplumber
+
+                with pdfplumber.open(str(file_path)) as pdf:
+                    if pdf.metadata and pdf.metadata.get("CreationDate"):
+                        # PDF date format: D:YYYYMMDDHHmmSS...
+                        creation_date = pdf.metadata["CreationDate"]
+                        # Parse PDF date format
+                        import re
+
+                        match = re.match(r"D:(\d{4})(\d{2})(\d{2})", creation_date)
+                        if match:
+                            year, month, day = match.groups()
+                            date_obj = datetime(int(year), int(month), int(day))
+                            date_str = date_obj.strftime(self.scan_date_format)
+                            date_source = "PDF metadata"
+            except Exception as e:
+                logger.debug(f"Could not read PDF metadata from {file_path}: {e}")
+
+        # Fallback to file system creation time or current date
+        if not date_str:
+            if file_path and file_path.exists():
+                try:
+                    import os
+
+                    stat = os.stat(str(file_path))
+                    # Use birth time if available (Linux), otherwise modification time
+                    if hasattr(stat, "st_birthtime"):
+                        date_obj = datetime.fromtimestamp(stat.st_birthtime)
+                    else:
+                        date_obj = datetime.fromtimestamp(stat.st_mtime)
+                    date_str = date_obj.strftime(self.scan_date_format)
+                    date_source = "file system"
+                except Exception as e:
+                    logger.debug(f"Could not get file time for {file_path}: {e}")
+
+        # Final fallback to current date
+        if not date_str:
             date_str = datetime.now().strftime(self.scan_date_format)
+            date_source = "current date"
+
+        logger.debug(
+            f"Date source for {original_filename}: {date_source} -> {date_str}"
+        )
 
         # Extract document type
         doc_type = analysis.get("document_type", "document")
@@ -444,7 +494,9 @@ IMPORTANT:
                 )
 
             # Generate new filename
-            new_filename = self.generate_filename(analysis, original_filename)
+            new_filename = self.generate_filename(
+                analysis, original_filename, file_path
+            )
 
             logger.info(f"Original: {original_filename} -> New: {new_filename}")
 
