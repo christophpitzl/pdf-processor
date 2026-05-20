@@ -9,6 +9,7 @@ Folders are mapped from the Docker host:
 """
 
 import os
+import re
 import time
 import hashlib
 import json
@@ -350,8 +351,6 @@ IMPORTANT:
                         # PDF date format: D:YYYYMMDDHHmmSS...
                         creation_date = pdf.metadata["CreationDate"]
                         # Parse PDF date format
-                        import re
-
                         match = re.match(r"D:(\d{4})(\d{2})(\d{2})", creation_date)
                         if match:
                             year, month, day = match.groups()
