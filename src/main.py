@@ -189,24 +189,21 @@ class PDFProcessor:
             logger.warning("No text to analyze")
             return {}
 
-        # Determine language for description generation and document types
+        # Determine language instruction
         if self.language == "de":
-            language_instruction = "Generate the description in German language."
-            document_types = "Rechnung|Quittung|Vertrag|Brief|Bericht|Sonstiges"
+            language_instruction = "Generate the name in German language."
         else:
-            language_instruction = "Generate the description in English language."
-            document_types = "invoice|receipt|contract|letter|report|other"
+            language_instruction = "Generate the name in English language."
 
         # Create prompt for document analysis
-        description_max_chars = 35
+        max_chars = self.settings.max_description_chars
 
         prompt = f"""Analyze the following document text and extract key information.
 
 Return a JSON object with the following structure:
 {{
-    "document_type": "{document_types}",
+    "name": "a concise, descriptive filename (MAX {max_chars} characters) that freely captures the document content — include the topic, relevant entities (company, person), and any other distinguishing detail you see fit",
     "date": "YYYY-MM-DD format if found, otherwise null",
-    "description": "concise description, MAX {description_max_chars} characters, that naturally combines the document topic and key entities (company names, person names, etc.) into a single readable phrase",
     "confidence": "0.0-1.0 confidence score"
 }}
 
@@ -217,8 +214,7 @@ Document text:
 
 IMPORTANT:
 - Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON.
-- The description must be a single cohesive phrase — do NOT return a separate list of entities. Incorporate entity names (company, person) directly into the description.
-- Keep the description field under {description_max_chars} characters. This is critical for filename length limits."""
+- The name must be under {max_chars} characters. This is critical for filename length limits."""
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -398,19 +394,17 @@ IMPORTANT:
                 value = value[:max_len].rstrip("_")
             return value
 
-        # Extract and sanitize document type
-        doc_type = _slugify(analysis.get("document_type") or "document") or "document"
-        if doc_type == "other":
-            doc_type = "file"
-
-        # Unified description field
-        description = (
-            _slugify(analysis.get("description") or analysis.get("summary", ""))
+        # Unified name field — AI chooses freely; hard-enforce char limit after slugify
+        name = (
+            _slugify(
+                analysis.get("name") or analysis.get("description", ""),
+                max_len=self.settings.max_description_chars,
+            )
             or "document"
         )
 
         # Build filename
-        filename = f"{date_str}_{doc_type}_{description}.pdf"
+        filename = f"{date_str}_{name}.pdf"
 
         # Clean up filename
         filename = re.sub(r"[^\w\s.-]", "", filename)
@@ -455,9 +449,8 @@ IMPORTANT:
                 )
                 # Build minimal analysis so file still gets renamed and moved
                 analysis = {
-                    "document_type": "Sonstiges" if self.language == "de" else "other",
+                    "name": "scan",
                     "date": None,
-                    "description": "scan",
                     "confidence": 0.0,
                 }
             else:

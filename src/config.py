@@ -48,6 +48,9 @@ class Settings:
     # ── Language ──────────────────────────────────────────────────────
     language: str = "de"
 
+    # ── Filename generation ──────────────────────────────────────────
+    max_description_chars: int = 50
+
     @classmethod
     def from_env(cls) -> "Settings":
         """Build a ``Settings`` from environment variables (and ``.env``).
@@ -74,4 +77,6 @@ class Settings:
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             # Language
             language=os.getenv("LANGUAGE", "de"),
+            # Filename generation
+            max_description_chars=int(os.getenv("MAX_DESCRIPTION_CHARS", "50")),
         )
