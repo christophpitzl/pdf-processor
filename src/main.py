@@ -181,7 +181,9 @@ class PDFProcessor:
             logger.error(f"Error checking Ollama connection: {e}")
             return False
 
-    def analyze_document_with_ai(self, text: str) -> Dict[str, Any]:
+    def analyze_document_with_ai(
+        self, text: str, max_retries: int = 3
+    ) -> Dict[str, Any]:
         """Analyze document content using a local Ollama model."""
         if not text:
             logger.warning("No text to analyze")
@@ -218,62 +220,67 @@ IMPORTANT:
 - The description must be a single cohesive phrase — do NOT return a separate list of entities. Incorporate entity names (company, person) directly into the description.
 - Keep the description field under {description_max_chars} characters. This is critical for filename length limits."""
 
-        try:
-            response = self.ollama_client.post(
-                "/api/chat",
-                json={
-                    "model": self.ollama_model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are a document analysis assistant. Always return valid JSON.",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    "stream": False,
-                    "options": {"temperature": 0.3, "num_predict": 500},
-                },
-            )
-            response.raise_for_status()
-
-            response_data = response.json()
-            logger.debug(f"Ollama full response: {response_data}")
-
-            # Extract content from response
-            if (
-                "message" not in response_data
-                or "content" not in response_data["message"]
-            ):
-                logger.error(f"Unexpected Ollama response structure: {response_data}")
-                return {}
-
-            content = response_data["message"]["content"].strip()
-            logger.debug(
-                f"Extracted content length: {len(content)}, content: {content[:200]}..."
-            )
-
-            if not content:
-                logger.error("Ollama returned empty content")
-                return {}
-
-            # Clean up markdown code blocks if present
-            # Models sometimes wrap JSON in ```json ... ``` blocks
-            if content.startswith("```"):
-                # Find the end of the code block
-                lines = content.split("\n")
-                cleaned_lines = []
-                in_code_block = False
-                for line in lines:
-                    if line.strip().startswith("```"):
-                        in_code_block = not in_code_block
-                        continue
-                    if in_code_block or not line.strip().startswith("```"):
-                        cleaned_lines.append(line)
-                content = "\n".join(cleaned_lines).strip()
-
-            # Try to parse JSON from the response
+        for attempt in range(1, max_retries + 1):
             try:
-                # Try to find JSON in the response
+                response = self.ollama_client.post(
+                    "/api/chat",
+                    json={
+                        "model": self.ollama_model,
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a document analysis assistant. Always return valid JSON.",
+                            },
+                            {"role": "user", "content": prompt},
+                        ],
+                        "stream": False,
+                        "options": {"temperature": 0.3, "num_predict": 1000},
+                    },
+                )
+                response.raise_for_status()
+
+                response_data = response.json()
+                logger.debug(f"Ollama full response: {response_data}")
+
+                # Extract content from response
+                if (
+                    "message" not in response_data
+                    or "content" not in response_data["message"]
+                ):
+                    logger.error(
+                        f"Unexpected Ollama response structure: {response_data}"
+                    )
+                    return {}
+
+                content = response_data["message"]["content"].strip()
+                logger.debug(
+                    f"Extracted content length: {len(content)}, content: {content[:200]}..."
+                )
+
+                if not content:
+                    logger.error("Ollama returned empty content")
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Retrying AI analysis (attempt {attempt + 1}/{max_retries})"
+                        )
+                        continue
+                    return {}
+
+                # Clean up markdown code blocks if present
+                # Models sometimes wrap JSON in ```json ... ``` blocks
+                if content.startswith("```"):
+                    lines = content.split("\n")
+                    cleaned_lines = []
+                    in_code_block = False
+                    for line in lines:
+                        if line.strip().startswith("```"):
+                            in_code_block = not in_code_block
+                            continue
+                        if in_code_block or not line.strip().startswith("```"):
+                            cleaned_lines.append(line)
+                    content = "\n".join(cleaned_lines).strip()
+
+                # Try to find and parse JSON from the response
                 json_start = content.find("{")
                 json_end = content.rfind("}") + 1
                 if json_start != -1 and json_end > json_start:
@@ -282,24 +289,42 @@ IMPORTANT:
 
                 if not content:
                     logger.error("No JSON content found in Ollama response")
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Retrying AI analysis (attempt {attempt + 1}/{max_retries})"
+                        )
+                        continue
                     return {}
 
-                result = json.loads(content)
-                return result
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse Ollama response as JSON: {e}")
-                logger.error(f"Response content that failed to parse: {content[:500]}")
+                try:
+                    result = json.loads(content)
+                    return result
+                except json.JSONDecodeError as e:
+                    logger.error(
+                        f"Failed to parse Ollama response as JSON (attempt "
+                        f"{attempt}/{max_retries}): {e}"
+                    )
+                    logger.error(
+                        f"Response content that failed to parse: {content[:500]}"
+                    )
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Retrying AI analysis (attempt {attempt + 1}/{max_retries})"
+                        )
+                        continue
+                    return {}
+
+            except httpx.RequestError as e:
+                logger.error(
+                    f"Error calling Ollama API at {self.ollama_base_url}: {e}. "
+                    f"Make sure Ollama is running and the model '{self.ollama_model}' is pulled."
+                )
+                return {}
+            except (KeyError, IndexError, json.JSONDecodeError) as e:
+                logger.error(f"Error parsing Ollama response: {e}")
                 return {}
 
-        except httpx.RequestError as e:
-            logger.error(
-                f"Error calling Ollama API at {self.ollama_base_url}: {e}. "
-                f"Make sure Ollama is running and the model '{self.ollama_model}' is pulled."
-            )
-            return {}
-        except (KeyError, IndexError, json.JSONDecodeError) as e:
-            logger.error(f"Error parsing Ollama response: {e}")
-            return {}
+        return {}
 
     def generate_filename(
         self,
