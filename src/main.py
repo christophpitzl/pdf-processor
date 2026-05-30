@@ -390,11 +390,6 @@ IMPORTANT:
             f"Date source for {original_filename}: {date_source} -> {date_str}"
         )
 
-        # Extract document type
-        doc_type = analysis.get("document_type", "document")
-        if doc_type == "other":
-            doc_type = "file"
-
         def _slugify(value: str, max_len: int = 100) -> str:
             """Convert a string to a safe filename slug."""
             value = re.sub(r"[^\w\s-]", "", value)
@@ -403,9 +398,15 @@ IMPORTANT:
                 value = value[:max_len].rstrip("_")
             return value
 
+        # Extract and sanitize document type
+        doc_type = _slugify(analysis.get("document_type") or "document") or "document"
+        if doc_type == "other":
+            doc_type = "file"
+
         # Unified description field
-        description = _slugify(
-            analysis.get("description") or analysis.get("summary", "document")
+        description = (
+            _slugify(analysis.get("description") or analysis.get("summary", ""))
+            or "document"
         )
 
         # Build filename
@@ -434,6 +435,7 @@ IMPORTANT:
             logger.error(f"File no longer exists in incoming folder: {file_path}")
             return False
 
+        local_path = Path(self.data_dir) / original_filename
         try:
             # Check for stop before starting
             if self._stop_requested:
@@ -441,42 +443,51 @@ IMPORTANT:
                 return False
 
             # Copy file to local data dir for processing (handles network latency)
-            local_path = Path(self.data_dir) / original_filename
             shutil.copy2(str(file_path), str(local_path))
 
             # Extract text from PDF
             text = self.extract_text_from_pdf(str(local_path))
 
             if not text:
-                logger.warning(f"No text extracted from {original_filename}, skipping")
-                self.progress_errors += 1
-                # Clean up local copy
-                if local_path.exists():
-                    local_path.unlink()
-                return False
-
-            # Check for stop before AI analysis
-            if self._stop_requested:
-                logger.info("Stop requested before AI analysis")
-                if local_path.exists():
-                    local_path.unlink()
-                return False
-
-            # Analyze with AI
-            analysis = self.analyze_document_with_ai(text)
-
-            if not analysis:
-                logger.warning(f"AI analysis failed for {original_filename}")
-                logger.warning(f"File remains in incoming for retry: {file_path.name}")
-                if local_path.exists():
-                    local_path.unlink()
-                return False
-
-            # Check confidence
-            if analysis.get("confidence", 0) < self.min_confidence:
                 logger.warning(
-                    f"Low confidence ({analysis.get('confidence')}) "
-                    f"for {original_filename}"
+                    f"No text extracted from {original_filename} "
+                    f"(image-only PDF?); using filename-based fallback"
+                )
+                # Build minimal analysis so file still gets renamed and moved
+                analysis = {
+                    "document_type": "Sonstiges" if self.language == "de" else "other",
+                    "date": None,
+                    "description": "scan",
+                    "confidence": 0.0,
+                }
+            else:
+                # Check for stop before AI analysis
+                if self._stop_requested:
+                    logger.info("Stop requested before AI analysis")
+                    if local_path.exists():
+                        local_path.unlink()
+                    return False
+
+                # Analyze with AI
+                analysis = self.analyze_document_with_ai(text)
+
+                if not analysis:
+                    logger.warning(f"AI analysis failed for {original_filename}")
+                    logger.warning(
+                        f"File remains in incoming for retry: {file_path.name}"
+                    )
+                    if local_path.exists():
+                        local_path.unlink()
+                    return False
+
+            # Check confidence — AI may return confidence as a string
+            try:
+                confidence = float(analysis.get("confidence", 0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if confidence < self.min_confidence:
+                logger.warning(
+                    f"Low confidence ({confidence:.2f}) for {original_filename}"
                 )
 
             # Generate new filename
@@ -543,6 +554,11 @@ IMPORTANT:
         except Exception as e:
             logger.error(f"Error processing {original_filename}: {e}")
             logger.error(f"File remains in incoming folder for retry: {file_path}")
+            try:
+                if local_path.exists():
+                    local_path.unlink()
+            except Exception:
+                pass
             return False
 
     def check_for_new_files(self) -> None:
