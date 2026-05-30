@@ -386,7 +386,7 @@ IMPORTANT:
             f"Date source for {original_filename}: {date_source} -> {date_str}"
         )
 
-        def _slugify(value: str, max_len: int = 100) -> str:
+        def _slugify(value: str, max_len: int = 200) -> str:
             """Convert a string to a safe filename slug."""
             value = re.sub(r"[^\w\s-]", "", value)
             value = re.sub(r"[-\s]+", "_", value).strip("_").lower()
@@ -394,14 +394,16 @@ IMPORTANT:
                 value = value[:max_len].rstrip("_")
             return value
 
-        # Unified name field — AI chooses freely; hard-enforce char limit after slugify
-        name = (
-            _slugify(
-                analysis.get("name") or analysis.get("description", ""),
-                max_len=self.settings.max_description_chars,
+        # Unified name field — AI controls length via prompt; Python only applies a
+        # safety ceiling (200 chars) to prevent pathological filenames, not to trim
+        # well-formed AI output.
+        raw_name = analysis.get("name") or analysis.get("description", "")
+        name = _slugify(raw_name) or "document"
+        if len(raw_name) > self.settings.max_description_chars:
+            logger.warning(
+                f"AI returned name longer than max_description_chars "
+                f"({len(raw_name)} > {self.settings.max_description_chars}): {raw_name!r}"
             )
-            or "document"
-        )
 
         # Build filename
         filename = f"{date_str}_{name}.pdf"
