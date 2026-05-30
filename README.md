@@ -168,7 +168,6 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `OLLAMA_MODEL` | `gemma4:e2b` | Local model to use for analysis |
 | `SCAN_DATE_FORMAT` | `%Y-%m-%d` | Date format for generated filenames |
 | `MIN_CONFIDENCE` | `0.6` | Minimum confidence score for processing |
-| `FILENAME_PATTERN` | `{date}_{type}_{summary}.pdf` | Pattern for new filenames |
 | `CHECK_INTERVAL` | `60` | Seconds between file checks (0 = disable auto-check) |
 | `LANGUAGE` | `de` | Language for AI-generated summaries (`de` for German, `en` for English) |
 | `WEB_HOST` | `0.0.0.0` | Host to bind the web interface to |
@@ -176,13 +175,6 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
 
 > **Note:** All defaults are defined once in `src/config.py`. If you ever need to reset to factory defaults, simply remove the variable from your `.env` file.
-
-### Filename Pattern Placeholders
-
-- `{date}` — Document date or current date
-- `{type}` — Document type (invoice, receipt, contract, etc.)
-- `{summary}` — Brief summary of document content
-- `{entities}` — Important entities (company names, person names, etc.) — only included if specified in pattern
 
 ## Web Interface
 
@@ -286,13 +278,15 @@ The AI can recognize and categorize various document types:
              ▼
 ┌─────────────────────────────────┐
 │  Analyze with Ollama LLM        │
-│  → document type, date, summary │
+│  → document type, date,         │
+│     description (unified)       │
 └────────────┬────────────────────┘
              │
              ▼
 ┌─────────────────────────────────┐
 │  Generate new filename          │
-│  → 2024-05-14_invoice_acme.pdf │
+│  → 2024-05-14_invoice_          │
+│     acme_corp_rechnung.pdf      │
 └────────────┬────────────────────┘
              │
              ▼
@@ -385,18 +379,6 @@ Set `LOG_LEVEL=DEBUG` in your `.env` file for more detailed logging.
 
 ## Customization
 
-### Custom Filename Patterns
-
-You can customize the filename pattern in `.env`:
-
-```bash
-# Include entity names (entities will only be added if {entities} is in the pattern)
-FILENAME_PATTERN={date}_{type}_{summary}_{entities}.pdf
-
-# Simple pattern without entities
-FILENAME_PATTERN={date}_{type}_{summary}.pdf
-```
-
 ### Adding Custom Document Types
 
 Modify the prompt in `src/main.py` to recognize additional document types.
@@ -410,10 +392,9 @@ The following aspects could be improved in future versions:
 - **Proposed improvement**: Only assign a date in the filename if the AI model detects a date with high confidence (e.g., confidence ≥ 0.8)
 - **Benefit**: Avoids misleading filenames when no actual document date is found
 
-### 2. Improved Summary Generation
-- **Current behavior**: Summary and entity are treated as separate fields, often resulting in cutoff entities when appended to the filename
-- **Proposed improvement**: Remove the separation between content summary and entity — let the AI model generate a single, cohesive short description that best represents the document
-- **Implementation**: Modify the prompt to request one unified "description" field (max 30-40 characters) instead of separate "summary" and "entities" fields
+### 2. Improved Summary Generation ✅ Implemented
+- **Previous behavior**: Summary and entity were treated as separate fields, often resulting in cutoff entities when appended to the filename
+- **Implementation**: The AI prompt requests a single unified `description` field (max 35 characters) that combines document topic and key entities into one readable phrase. Filenames always follow the pattern `{date}_{type}_{description}.pdf`.
 - **Benefit**: More natural, readable filenames without artificial truncation or awkward concatenation
 
 ## License

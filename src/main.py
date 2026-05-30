@@ -54,7 +54,6 @@ class PDFProcessor:
         self.ollama_model = s.ollama_model
         self.scan_date_format = s.scan_date_format
         self.min_confidence = s.min_confidence
-        self.filename_pattern = s.filename_pattern
         self.check_interval = s.check_interval
         self.log_level = s.log_level
         self.data_dir = s.data_dir
@@ -188,32 +187,16 @@ class PDFProcessor:
             logger.warning("No text to analyze")
             return {}
 
-        # Determine language for summary generation and document types
+        # Determine language for description generation and document types
         if self.language == "de":
-            language_instruction = "Generate the summary in German language."
+            language_instruction = "Generate the description in German language."
             document_types = "Rechnung|Quittung|Vertrag|Brief|Bericht|Sonstiges"
         else:
-            language_instruction = "Generate the summary in English language."
+            language_instruction = "Generate the description in English language."
             document_types = "invoice|receipt|contract|letter|report|other"
 
         # Create prompt for document analysis
-        # Check what fields are needed based on filename pattern
-        include_type = "{type}" in self.filename_pattern
-        include_entities = "{entities}" in self.filename_pattern
-
-        # Adjust summary length based on what else is in the filename
-        # Keep summary short to avoid overly long filenames
-        # AI model should respect these limits strictly
-        if include_type and include_entities:
-            summary_max_chars = 20
-        elif include_type or include_entities:
-            summary_max_chars = 30
-        else:
-            summary_max_chars = 40
-
-        entities_field = ""
-        if include_entities:
-            entities_field = '\n    "entities": ["list of important entities like company names, person names, etc."]'
+        description_max_chars = 35
 
         prompt = f"""Analyze the following document text and extract key information.
 
@@ -221,18 +204,19 @@ Return a JSON object with the following structure:
 {{
     "document_type": "{document_types}",
     "date": "YYYY-MM-DD format if found, otherwise null",
-    "summary": "brief summary, MAX {summary_max_chars} characters, of the document content",
-    "confidence": 0.0-1.0 confidence score",{entities_field}
+    "description": "concise description, MAX {description_max_chars} characters, that naturally combines the document topic and key entities (company names, person names, etc.) into a single readable phrase",
+    "confidence": "0.0-1.0 confidence score"
 }}
 
 {language_instruction}
 
 Document text:
-{text[:4000]}  # Limit text length for API
+{text[:4000]}
 
-IMPORTANT: 
+IMPORTANT:
 - Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON.
-- Keep the summary field under {summary_max_chars} characters. This is critical for filename length limits."""
+- The description must be a single cohesive phrase — do NOT return a separate list of entities. Incorporate entity names (company, person) directly into the description.
+- Keep the description field under {description_max_chars} characters. This is critical for filename length limits."""
 
         try:
             response = self.ollama_client.post(
@@ -386,38 +370,21 @@ IMPORTANT:
         if doc_type == "other":
             doc_type = "file"
 
-        # Generate summary (slugified)
-        summary = analysis.get("summary", "document")
-        summary = re.sub(r"[^\w\s-]", "", summary)
-        summary = re.sub(r"[-\s]+", "_", summary).strip("_").lower()
-        # Emergency fallback: only truncate if AI model didn't respect limits
-        # (should be rare if prompt is followed)
-        if len(summary) > 100:
-            summary = summary[:100].rstrip("_")
+        def _slugify(value: str, max_len: int = 100) -> str:
+            """Convert a string to a safe filename slug."""
+            value = re.sub(r"[^\w\s-]", "", value)
+            value = re.sub(r"[-\s]+", "_", value).strip("_").lower()
+            if len(value) > max_len:
+                value = value[:max_len].rstrip("_")
+            return value
 
-        # Extract entities if pattern includes {entities}
-        entities_str = ""
-        if "{entities}" in self.filename_pattern:
-            entities = analysis.get("entities", [])
-            if entities:
-                entities_str = "_".join(
-                    [e.replace(" ", "_").lower() for e in entities[:3]]
-                )
-                entities_str = re.sub(r"[^\w_]", "", entities_str)
-                # Emergency fallback: only truncate if AI model didn't respect limits
-                if len(entities_str) > 60:
-                    entities_str = entities_str[:60]
+        # Unified description field
+        description = _slugify(
+            analysis.get("description") or analysis.get("summary", "document")
+        )
 
-        # Replace pattern placeholders
-        filename = self.filename_pattern
-        filename = filename.replace("{date}", date_str)
-        filename = filename.replace("{type}", doc_type)
-        filename = filename.replace("{summary}", summary)
-        filename = filename.replace("{entities}", entities_str)
-
-        # Ensure .pdf extension
-        if not filename.lower().endswith(".pdf"):
-            filename += ".pdf"
+        # Build filename
+        filename = f"{date_str}_{doc_type}_{description}.pdf"
 
         # Clean up filename
         filename = re.sub(r"[^\w\s.-]", "", filename)

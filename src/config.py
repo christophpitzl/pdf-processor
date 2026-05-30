@@ -32,7 +32,6 @@ class Settings:
     # ── PDF processing ──────────────────────────────────────────────────
     scan_date_format: str = "%Y-%m-%d"
     min_confidence: float = 0.6
-    filename_pattern: str = "{date}_{type}_{summary}.pdf"
     check_interval: int = 60
 
     # ── Web interface ───────────────────────────────────────────────────
@@ -67,9 +66,6 @@ class Settings:
             # Processing
             scan_date_format=os.getenv("SCAN_DATE_FORMAT", "%Y-%m-%d"),
             min_confidence=float(os.getenv("MIN_CONFIDENCE", "0.6")),
-            filename_pattern=os.getenv(
-                "FILENAME_PATTERN", "{date}_{type}_{summary}.pdf"
-            ),
             check_interval=int(os.getenv("CHECK_INTERVAL", "60")),
             # Web
             web_host=os.getenv("WEB_HOST", "0.0.0.0"),

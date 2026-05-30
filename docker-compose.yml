@@ -44,7 +44,6 @@ services:
       # Processing
       - SCAN_DATE_FORMAT=${SCAN_DATE_FORMAT:-%Y-%m-%d}
       - MIN_CONFIDENCE=${MIN_CONFIDENCE:-0.6}
-      - FILENAME_PATTERN=${FILENAME_PATTERN:-{date}_{type}_{summary}.pdf}
       - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
       - LANGUAGE=${LANGUAGE:-de}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

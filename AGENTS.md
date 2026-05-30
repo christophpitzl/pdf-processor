@@ -44,7 +44,7 @@
 - Defaults defined once in `Settings`; all other files reference it
 - `.env.example` documents all env vars with defaults
 - `docker-compose.yml` passes env vars with shell defaults (`${VAR:-default}`)
-- Entities only added to filename if `{entities}` is specified in `FILENAME_PATTERN`
+- Filename pattern is hardcoded as `{date}_{type}_{description}.pdf`; AI returns a single `description` field combining topic and entities
 
 ## Ollama Integration
 
