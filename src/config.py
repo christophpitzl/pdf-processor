@@ -49,10 +49,10 @@ class Settings:
     language: str = "de"
 
     # ── Ollama timeout and retry settings ─────────────────────────────
-    ollama_request_timeout: int = 600
+    ollama_request_timeout: int = 120
     ollama_connect_timeout: int = 10
     ollama_max_retries: int = 3
-    ollama_unload_idle_seconds: int = 600
+    ollama_unload_idle_seconds: int = 0
 
     # ── Filename generation ──────────────────────────────────────────
     max_description_chars: int = 50
