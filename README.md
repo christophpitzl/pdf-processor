@@ -173,6 +173,7 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `OLLAMA_REQUEST_TIMEOUT` | `120` | Ollama API request timeout in seconds |
 | `OLLAMA_CONNECT_TIMEOUT` | `10` | Ollama API connection timeout in seconds |
 | `OLLAMA_MAX_RETRIES` | `3` | Number of retries for Ollama document analysis |
+| `OLLAMA_UNLOAD_IDLE_SECONDS` | `0` | Idle seconds before closing the Ollama client |
 | `WEB_HOST` | `0.0.0.0` | Host to bind the web interface to |
 | `WEB_PORT` | `8080` | Port for the web interface |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |
