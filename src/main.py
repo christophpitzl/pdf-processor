@@ -18,6 +18,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+import socket
 
 from loguru import logger
 from dotenv import load_dotenv
@@ -743,6 +744,23 @@ IMPORTANT:
             logger.error(f"Error calculating hash for {file_path}: {e}")
             return None
 
+    def _validate_web_host(self) -> None:
+        """Validate the configured web host address for the web interface."""
+        web_host = self.settings.web_host
+        if not web_host or web_host.strip() == "[IP_ADDRESS]":
+            raise ValueError(
+                "Invalid WEB_HOST configuration: set WEB_HOST to a valid bind "
+                "address such as 0.0.0.0 or 127.0.0.1."
+            )
+
+        try:
+            socket.getaddrinfo(web_host, None)
+        except socket.gaierror:
+            raise ValueError(
+                f"Invalid WEB_HOST configuration: '{web_host}' is not a resolvable host. "
+                "Use 0.0.0.0, 127.0.0.1, or a valid hostname."
+            )
+
     def run(self, web_mode: bool = False) -> None:
         """Main loop to continuously monitor for new files.
 
@@ -780,6 +798,12 @@ def main():
         from src.webapp import WebApp
 
         processor = PDFProcessor()
+
+        try:
+            processor._validate_web_host()
+        except ValueError as exc:
+            logger.error(str(exc))
+            sys.exit(1)
 
         # If check_interval is 0, run in web mode only
         if processor.check_interval == 0:

@@ -48,7 +48,7 @@ services:
       - LANGUAGE=${LANGUAGE:-de}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Web server
-      - WEB_HOST=${WEB_HOST:-[IP_ADDRESS]}
+      - WEB_HOST=${WEB_HOST:-0.0.0.0}
       - WEB_PORT=${WEB_PORT:-8080}
     volumes:
       # Map host folders to container paths
