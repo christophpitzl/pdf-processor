@@ -72,7 +72,7 @@ class PDFProcessor:
         # Ollama client lifecycle
         self.ollama_client: Optional[httpx.Client] = None
         self._ollama_last_used: float = time.monotonic()
-        self._ollama_unload_lock = threading.Lock()
+        self._ollama_unload_lock = threading.RLock()
         self._ollama_unload_timer: Optional[threading.Timer] = None
 
         # Setup logging

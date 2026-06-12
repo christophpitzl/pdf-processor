@@ -28,6 +28,7 @@
 
 services:
   pdf-processor:
+    build: .
     image: ghcr.io/christophpitzl/pdf-processor:latest
     # RECOMMENDED FOR PRODUCTION: Use specific version tags
     # - ghcr.io/christophpitzl/pdf-processor:v1.0.0  # specific stable version
