@@ -170,6 +170,9 @@ All configuration parameters have **sensible built-in defaults** defined in `src
 | `MIN_CONFIDENCE` | `0.6` | Minimum confidence score for processing |
 | `CHECK_INTERVAL` | `60` | Seconds between file checks (0 = disable auto-check) |
 | `LANGUAGE` | `de` | Language for AI-generated summaries (`de` for German, `en` for English) |
+| `OLLAMA_REQUEST_TIMEOUT` | `120` | Ollama API request timeout in seconds |
+| `OLLAMA_CONNECT_TIMEOUT` | `10` | Ollama API connection timeout in seconds |
+| `OLLAMA_MAX_RETRIES` | `3` | Number of retries for Ollama document analysis |
 | `WEB_HOST` | `0.0.0.0` | Host to bind the web interface to |
 | `WEB_PORT` | `8080` | Port for the web interface |
 | `LOG_LEVEL` | `INFO` | Logging level (DEBUG, INFO, WARNING, ERROR) |

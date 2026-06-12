@@ -48,6 +48,12 @@ class Settings:
     # ── Language ──────────────────────────────────────────────────────
     language: str = "de"
 
+    # ── Ollama timeout and retry settings ─────────────────────────────
+    ollama_request_timeout: int = 600
+    ollama_connect_timeout: int = 10
+    ollama_max_retries: int = 3
+    ollama_unload_idle_seconds: int = 600
+
     # ── Filename generation ──────────────────────────────────────────
     max_description_chars: int = 50
 
@@ -77,6 +83,17 @@ class Settings:
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             # Language
             language=os.getenv("LANGUAGE", "de"),
+            # Ollama timeout and retry settings
+            ollama_request_timeout=int(
+                os.getenv("OLLAMA_REQUEST_TIMEOUT", "120")
+            ),
+            ollama_connect_timeout=int(
+                os.getenv("OLLAMA_CONNECT_TIMEOUT", "10")
+            ),
+            ollama_max_retries=int(os.getenv("OLLAMA_MAX_RETRIES", "3")),
+            ollama_unload_idle_seconds=int(
+                os.getenv("OLLAMA_UNLOAD_IDLE_SECONDS", "0")
+            ),
             # Filename generation
             max_description_chars=int(os.getenv("MAX_DESCRIPTION_CHARS", "50")),
         )

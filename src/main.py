@@ -11,6 +11,7 @@ Folders are mapped from the Docker host:
 import os
 import re
 import time
+import threading
 import hashlib
 import json
 import shutil
@@ -67,6 +68,12 @@ class PDFProcessor:
         self.progress_current = 0
         self.progress_errors = 0
 
+        # Ollama client lifecycle
+        self.ollama_client: Optional[httpx.Client] = None
+        self._ollama_last_used: float = time.monotonic()
+        self._ollama_unload_lock = threading.Lock()
+        self._ollama_unload_timer: Optional[threading.Timer] = None
+
         # Setup logging
         logger.remove()
         logger.add(
@@ -78,10 +85,7 @@ class PDFProcessor:
         logger.add(lambda msg: print(msg, end=""), level=self.log_level)
 
         # Initialize Ollama HTTP client
-        self.ollama_client = httpx.Client(
-            base_url=self.ollama_base_url,
-            timeout=httpx.Timeout(120.0, connect=10.0),
-        )
+        self._initialize_ollama_client()
 
         # Track processed files to avoid duplicates (keyed by absolute path)
         self.processed_files: Dict[str, str] = {}
@@ -157,6 +161,7 @@ class PDFProcessor:
     def check_ollama_connection(self) -> bool:
         """Check if Ollama server is reachable and model is available."""
         try:
+            self._initialize_ollama_client()
             # Check if Ollama is running
             response = self.ollama_client.get("/api/tags", timeout=5.0)
             response.raise_for_status()
@@ -181,13 +186,73 @@ class PDFProcessor:
             logger.error(f"Error checking Ollama connection: {e}")
             return False
 
-    def analyze_document_with_ai(
-        self, text: str, max_retries: int = 3
-    ) -> Dict[str, Any]:
+    def _initialize_ollama_client(self) -> None:
+        """Initialize or reopen the Ollama HTTP client and schedule unload."""
+        with self._ollama_unload_lock:
+            if self.ollama_client is None:
+                self.ollama_client = httpx.Client(
+                    base_url=self.ollama_base_url,
+                    timeout=httpx.Timeout(
+                        self.settings.ollama_request_timeout,
+                        connect=self.settings.ollama_connect_timeout,
+                    ),
+                )
+                logger.debug("Initialized Ollama HTTP client")
+
+            self._ollama_last_used = time.monotonic()
+            self._schedule_ollama_unload()
+
+    def _schedule_ollama_unload(self) -> None:
+        """Schedule automatic Ollama client unload after idle timeout."""
+        with self._ollama_unload_lock:
+            if self._ollama_unload_timer is not None:
+                self._ollama_unload_timer.cancel()
+                self._ollama_unload_timer = None
+
+            timeout_seconds = self.settings.ollama_unload_idle_seconds
+            if timeout_seconds > 0:
+                self._ollama_unload_timer = threading.Timer(
+                    timeout_seconds, self._unload_ollama_client
+                )
+                self._ollama_unload_timer.daemon = True
+                self._ollama_unload_timer.start()
+                logger.debug(
+                    f"Scheduled Ollama client unload after {timeout_seconds}s of idle time"
+                )
+
+    def _unload_ollama_client(self) -> None:
+        """Close the Ollama client when idle timeout is reached."""
+        with self._ollama_unload_lock:
+            if self.ollama_client is None:
+                return
+
+            try:
+                self.ollama_client.close()
+                logger.info(
+                    "Ollama client closed after idle timeout"
+                    if self.settings.ollama_unload_idle_seconds > 0
+                    else "Ollama client closed"
+                )
+            except Exception as e:
+                logger.warning(f"Error closing Ollama client: {e}")
+            finally:
+                self.ollama_client = None
+                if self._ollama_unload_timer is not None:
+                    self._ollama_unload_timer.cancel()
+                    self._ollama_unload_timer = None
+
+    def analyze_document_with_ai(self, text: str, max_retries: Optional[int] = None) -> Dict[str, Any]:
         """Analyze document content using a local Ollama model."""
         if not text:
             logger.warning("No text to analyze")
             return {}
+
+        self._initialize_ollama_client()
+        retries = (
+            max_retries
+            if max_retries is not None
+            else self.settings.ollama_max_retries
+        )
 
         # Determine language instruction
         if self.language == "de":
@@ -216,7 +281,7 @@ IMPORTANT:
 - Return ONLY the raw JSON object. Do NOT wrap it in markdown code blocks (no ```json or ```). Do NOT add any explanatory text. Only return valid JSON.
 - The name must be under {max_chars} characters. This is critical for filename length limits."""
 
-        for attempt in range(1, max_retries + 1):
+        for attempt in range(1, retries + 1):
             try:
                 response = self.ollama_client.post(
                     "/api/chat",
@@ -255,9 +320,9 @@ IMPORTANT:
 
                 if not content:
                     logger.error("Ollama returned empty content")
-                    if attempt < max_retries:
+                    if attempt < retries:
                         logger.warning(
-                            f"Retrying AI analysis (attempt {attempt + 1}/{max_retries})"
+                            f"Retrying AI analysis (attempt {attempt + 1}/{retries})"
                         )
                         continue
                     return {}
@@ -285,9 +350,9 @@ IMPORTANT:
 
                 if not content:
                     logger.error("No JSON content found in Ollama response")
-                    if attempt < max_retries:
+                    if attempt < retries:
                         logger.warning(
-                            f"Retrying AI analysis (attempt {attempt + 1}/{max_retries})"
+                            f"Retrying AI analysis (attempt {attempt + 1}/{retries})"
                         )
                         continue
                     return {}
@@ -298,14 +363,14 @@ IMPORTANT:
                 except json.JSONDecodeError as e:
                     logger.error(
                         f"Failed to parse Ollama response as JSON (attempt "
-                        f"{attempt}/{max_retries}): {e}"
+                        f"{attempt}/{retries}): {e}"
                     )
                     logger.error(
                         f"Response content that failed to parse: {content[:500]}"
                     )
-                    if attempt < max_retries:
+                    if attempt < retries:
                         logger.warning(
-                            f"Retrying AI analysis (attempt {attempt + 1}/{max_retries})"
+                            f"Retrying AI analysis (attempt {attempt + 1}/{retries})"
                         )
                         continue
                     return {}
@@ -315,6 +380,11 @@ IMPORTANT:
                     f"Error calling Ollama API at {self.ollama_base_url}: {e}. "
                     f"Make sure Ollama is running and the model '{self.ollama_model}' is pulled."
                 )
+                if attempt < retries:
+                    logger.warning(
+                        f"Retrying AI analysis after request error (attempt {attempt + 1}/{retries})"
+                    )
+                    continue
                 return {}
             except (KeyError, IndexError, json.JSONDecodeError) as e:
                 logger.error(f"Error parsing Ollama response: {e}")
